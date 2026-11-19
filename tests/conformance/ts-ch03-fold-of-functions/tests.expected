@@ -1,0 +1,6 @@
+# Derived by hand: the composed function adds every element to its argument; over no elements it is the identity.
+test composed
+
+tick 0
+  added:
+    0: Ui.Label(text="4 1")

@@ -1,0 +1,6 @@
+# Derived by hand: the page's one label; the function over a file's contents is never called.
+test built
+
+tick 0
+  added:
+    0: Ui.Label(text="no file here")

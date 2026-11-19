@@ -1,0 +1,21 @@
+# `!Updated` of a dynamic that is the result of a widget of several clauses (Semantics
+# ch. 7: `!Updated $d` is the event half of any dynamic; ch. 8: `$r <- @Pick 1` binds the
+# chosen clause's result, its hold `$n`). Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Pick: fn Nat -> @$Nat
+fn @Pick 0:
+    @ $ 0
+fn @Pick k:
+    !inc <- Ui.Button($label=$"inc")                             # 0
+    $n <- k then $n + 1 on !inc
+    @ $n
+
+@page: @unit
+@page:
+    $r <- @Pick 1                                                # 0
+    $heard <- 0 then $heard + 1 on !Updated $r
+    Ui.Label($text=$"{$r} heard {$heard}")                       # 1

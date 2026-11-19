@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 5 (a `let` generalizes) and Semantics ch. 4 (a `let` names a value and adds no place): the label is the block's one place.
+test unused_generic_lets_build_nothing
+
+tick 0
+  added:
+    0: Ui.Label(text="built")

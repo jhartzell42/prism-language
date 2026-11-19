@@ -1,0 +1,13 @@
+# Derived by hand from the program: `SpecFor False` is the compared spec (`Mixed 3`), so the label says same; the click makes `$dark` true, the spec's shade `Dark`, and the label different.
+test records_compare_through_their_choice
+
+tick 0
+  added:
+    0: Ui.Button(label="flip")
+    1: Ui.Label(text="same")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="different")

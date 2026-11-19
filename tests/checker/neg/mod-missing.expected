@@ -1,0 +1,5 @@
+tests/checker/neg/mod-missing/app.prism:3: error[mod-missing]: `mod Gone` declares `gone.prism` or `gone/mod.prism`, and neither is there
+    mod Gone
+    ^^^^^^^^
+  fix: create gone.prism, or delete the line
+1 error

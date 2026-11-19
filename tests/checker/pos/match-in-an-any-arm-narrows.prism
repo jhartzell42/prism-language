@@ -1,0 +1,22 @@
+# A match that ends an `any` arm is checked at the type the outer match is: its tag arms
+# each narrow the rigid `o`, and no opened type leaves. Found by the step 3 build on the
+# library (`SupplierFrom`, whose `any ((role, id, element))` arm matches `element`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+family Count
+
+tag Count.Ask of Element Nat:
+    by: Nat
+
+tag Count.Name of Element Text:
+    name: Text
+
+type Tagged o = any a: ((a, Element Count.* o))
+
+type Answerer = forall o. fn Tagged o -> @o emit unit
+
+Answering: fn Nat -> Answerer
+fn Answering n = \|tagged| match tagged:
+    any ((label, element)): match element:
+        Count.Ask(by=by): @ by + n
+        Count.Name(name=name): @ name

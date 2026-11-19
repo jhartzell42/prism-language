@@ -1,0 +1,4 @@
+tests/checker/neg/regex-property-negated.prism:2: error[regex]: a negated property is written \P{...}
+    let r = %/\p{^L}/
+              ^
+1 error

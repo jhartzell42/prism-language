@@ -1,0 +1,4 @@
+tests/checker/neg/regex-no-ord.prism:3: error[no-impl]: no impl of `^Ord` for `Regex`
+    fn Earlier a, b = a < b
+                      ^^^^^
+1 error

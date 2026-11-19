@@ -1,0 +1,16 @@
+# The tests of sem-ch09-host-bundle-two-events-answer.
+emit Ui.* | Pad.*
+use App.*
+
+test two_event_parts_answered, @mocked:
+    build
+        => expect Ui.Label(text="none, 0 lost")
+    click at 0
+    compute
+        => expect Ui.Label(text="hello, 0 lost")
+    click at 1
+    compute
+        => expect Ui.Label(text="hello, 3 lost")
+    click at 0, click at 1
+    compute
+        => expect Ui.Label(text="hello, 6 lost")

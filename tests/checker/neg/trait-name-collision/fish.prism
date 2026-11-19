@@ -1,0 +1,5 @@
+# `Fish`, a child module of the root, with a trait named as `Birds`'s is.
+emit r
+
+trait ^Named a:
+    Describe: fn a -> Text

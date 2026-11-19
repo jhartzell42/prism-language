@@ -1,0 +1,21 @@
+# A lambda given where a quantified function is wanted is checked at a fresh rigid `o`,
+# and each arm refines `o` on its own: `Answerer` is `forall o. fn Element Count.* o -> @o`,
+# and the lambda's `Count.Ask` arm gives a `Nat`, its `Count.Name` arm a `Text`. Found by
+# the step 3 build on the library (`SupplierFrom`, whose lambda is a `Supplier d`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+
+family Count
+
+tag Count.Ask of Element Nat:
+    by: Nat
+
+tag Count.Name of Element Text:
+    name: Text
+
+type Answerer = forall o. fn Element Count.* o -> @o emit unit
+
+Answering: fn Nat -> Answerer
+fn Answering n = \|element| match element:
+    Count.Ask(by=by): @ by + n
+    Count.Name(name=name): @ name

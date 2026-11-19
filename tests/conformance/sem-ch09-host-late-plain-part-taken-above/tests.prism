@@ -1,0 +1,9 @@
+# The tests of sem-ch09-host-late-plain-part-taken-above.
+emit Ui.* | Pad.*
+use App.*
+
+test a_late_plain_part_is_taken, @host:
+    build
+    click at 0
+    compute
+    compute

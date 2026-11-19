@@ -1,0 +1,7 @@
+# The tests of sem-ch04-local-function-recursive.
+emit Ui.*
+use App.*
+
+test it_builds, @page:
+    build
+        => expect Ui.Label(text="sum 10")

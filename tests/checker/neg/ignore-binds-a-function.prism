@@ -1,0 +1,17 @@
+# `<-` binds a blueprint or an element (Semantics ch. 8, "`<-` has three readings"), and
+# `ignore <-` drops an output on purpose; it does not make a line of a function that was
+# not applied. The checker refuses `$d <- @Distinct` so; with `ignore` on the left it lets
+# the line through, and the back end refuses it ("a building line this back end does not
+# lower yet"; its guard for a host without an argument stands behind). Written by Claude
+# on the claude-lowering branch; subject to change.
+emit Ui.*
+use Ui.*
+
+@Row: fn Nat -> @unit
+fn @Row n:
+    Ui.Label($text=$"row {n}")
+
+@page: @unit
+@page:
+    ignore <- @Row
+    Ui.Label($text=$"x")

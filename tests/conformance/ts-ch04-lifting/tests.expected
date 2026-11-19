@@ -1,0 +1,64 @@
+# The book prints none for this program; checked by hand against the book's rules.
+test the_change_law
+
+tick 0
+  added:
+    0: Ui.Button(label="Set")
+    1: Ui.Label(text="1")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="16")
+
+test application_lifts
+
+tick 0
+  added:
+    0: Ui.Button(label="Tap")
+    1: Ui.Label(text="4 0 0 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="4 2 2 1")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="4 4 2 2")
+
+test scoreboard
+
+tick 0
+  added:
+    0: Ui.Button(label="Home scores")
+    1: Ui.Button(label="Away scores")
+    2: Ui.Label(text="0 to 0, level, 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="1 to 0, home, 1")
+
+tick 2
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="2 to 0, home, 1")
+
+tick 3
+  in:
+    1: click
+  changed:
+    2: Ui.Label(text="2 to 1, home, 1")
+
+tick 4
+  in:
+    1: click
+  changed:
+    2: Ui.Label(text="2 to 2, level, 1")

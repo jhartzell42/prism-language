@@ -1,0 +1,10 @@
+tests/checker/neg/impl-head-unread.prism:11: error[unknown-name]: no type `Missing`
+    impl ^Named Missing:
+                ^^^^^^^
+tests/checker/neg/impl-head-unread.prism:14: error[kind]: `Pair` takes one type; here it has no
+    impl ^Named Pair:
+                ^^^^
+tests/checker/neg/impl-head-unread.prism:17: error[kind]: `Pair` takes one type; here it has two
+    impl ^Named (Pair a b):
+                 ^^^^^^^^
+3 errors

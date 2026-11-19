@@ -1,0 +1,9 @@
+# A map literal is doubled, `{{k: v}}`, and single braces hold (Jimmy's ruling, 12
+# November): a single brace whose top level has a colon, or an empty `{}`, is a map in
+# single braces, and its fix doubles them.
+# Written by Claude on the claude-lowering branch; subject to change.
+Scores: fn Nat -> (Text ==> Nat)
+fn Scores n = {"ada": n, "bo": n + 2}
+
+Picked: fn Nat -> (Text ==> Nat)
+fn Picked n = if n == 0: {} else: {"n": n}

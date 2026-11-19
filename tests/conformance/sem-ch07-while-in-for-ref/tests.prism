@@ -1,0 +1,8 @@
+# The tests of sem-ch07-while-in-for-ref.
+emit Ui.*
+use App.*
+
+test a_loop_in_a_for_by_reference_turns_a_cycle_each, @RefShown [[2, 1]]:
+    build
+    compute until idle
+        => expect Ui.Label(text="4,2")

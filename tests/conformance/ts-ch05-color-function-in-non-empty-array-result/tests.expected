@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 4: `Both` gives the closure twice, so the fold adds 1 twice to 5 and the label reads 7. Never run: prismc refuses the program.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="7")

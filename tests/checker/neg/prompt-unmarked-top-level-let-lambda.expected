@@ -1,0 +1,5 @@
+tests/checker/neg/prompt-unmarked-top-level-let-lambda.prism:8: error[prompt-unmarked]: this lambda gives an event that fires in the tick `!e` fires, and the type it is given at does not mark that parameter `prompt`
+    let @Pass = \|!e| @ !e
+                      ^^^^
+  fix: give it a tick later with `@Defer`, or write `\|prompt !e| ...` where a function prompt in that parameter is wanted
+1 error

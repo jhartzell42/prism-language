@@ -1,0 +1,15 @@
+# `grows-without-end` through an impl: the method of `impl ^Deep [a]` asks for `^Deep`
+# at `[[a]]`, which the same impl answers at `[a]` for `a`, so the program needs the impl
+# at `[Nat]`, `[[Nat]]`, and so on (ruling PG: no finite set of types holds them all).
+# Which impl answers is read off the head the constraint names, so the step is a
+# substitution as a use by name is.
+trait ^Deep a:
+    Dig: fn a, Nat -> Nat
+
+impl ^Deep Nat:
+    fn Dig n, more = n
+
+impl ^Deep [a] where a: ^Deep:
+    fn Dig xs, more = match more -? 1:
+        ? less: Dig [[xs]], less
+        nil: Len xs

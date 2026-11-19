@@ -1,0 +1,8 @@
+# The tests of ts-ch02-field-reads.
+emit Ui.*
+use App.*
+
+test fields_are_read_everywhere, @main:
+    build
+        => expect Ui.Label(text="missing: gone 1 gone 1! 1 2 1 a 3 one 1 a3")
+        => expect Ui.Label(text="4 4 a")

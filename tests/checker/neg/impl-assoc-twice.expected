@@ -1,0 +1,4 @@
+tests/checker/neg/impl-assoc-twice.prism:13: error[collision]: a second choice of `type Width`
+        type Width = Text
+        ^^^^^^^^^^^^^^^^^
+1 error

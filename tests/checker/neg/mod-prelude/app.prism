@@ -1,0 +1,9 @@
+# A root module declaring a child named `Prelude`: refused (mod-prelude). `Prelude` is the
+# prelude's own module, which every file reaches by that name, and the emitted code's path
+# to it from the crate. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+mod Prelude
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Prelude.Twice 2}")

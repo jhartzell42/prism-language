@@ -1,0 +1,6 @@
+# Derived by hand from Jimmy's ruling of 12 November (promoted constructors: `Quantity Metre`, `Quantity Second` and `Quantity Gram` are three types, and `Added` keeps its two arguments at one unit): 300 m and 200 m are 500 m, 60 s and 30 s are 90 s, and 5 g stays 5 g.
+test measured
+
+tick 0
+  added:
+    0: Ui.Label(text="500 m, 90 s, 5 g")

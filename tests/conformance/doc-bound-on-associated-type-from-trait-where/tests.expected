@@ -1,0 +1,7 @@
+# Derived by hand from Part III ch. 5 (a state is written and read back by its own `^SerializableValue`) and the library's `Decoded` (no bytes are the initial state): 7 is written as one byte and read back as 7; no bytes give the initial 0.
+test written_and_read_back
+
+tick 0
+  added:
+    0: Ui.Label(text="read back 7")
+    1: Ui.Label(text="from nothing 0")

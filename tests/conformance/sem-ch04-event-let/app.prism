@@ -1,0 +1,13 @@
+# An event named again by a `let` (Semantics ch. 4: a `let` names a value, and every
+# binder shows the mark of what it stands for): a hold steps on the new name as on the
+# old. Pins the back end's guard "an event read as a value" (lower/expr.prism). Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@main: @unit
+@main:
+    !go <- Ui.Button($label=$"go")                                # 0
+    let !again = !go
+    $n <- 0 then $n + 1 on !again
+    Ui.Label($text=$"{$n}")                                       # 1

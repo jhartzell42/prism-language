@@ -1,0 +1,15 @@
+# A `rebuild`'s dynamic read by a place written above the `rebuild` (Semantics ch. 4: a
+# block's bindings are a group, ruling HA; "What a `rebuild` hands back").
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@main: @unit
+@main:
+    !go <- Ui.Button($label=$"go")                                # 0
+    $page <- 1 then $page + 1 on !go
+    Ui.Label($text=$"{$doubled}")                                 # 1
+    $doubled <- rebuild $page:                                   # 2/#g
+        Ui.Label($text=$"page {_}")                               # 2/#g/0
+        @ _ * 2

@@ -1,0 +1,15 @@
+# A function whose parameter is a type of a standard library module (`~Fs.Contents`, the
+# library's `BytesOf`), in a program that never emits that module's tags and never calls
+# the function. Isolated from tests/documents/tally, whose crate wrote `bytes_of_f` over
+# `crate::fs::Contents` and no `fs` module (rustc E0433: cannot find `fs` in `crate`).
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+LengthOf: fn ~Fs.Contents -> Nat
+fn LengthOf (~ contents) = Len (Utf8Bytes contents.text)
+fn LengthOf ~failed = 0
+
+@page: @unit
+@page:
+    Ui.Label($text=$"no file here")                                        # 0

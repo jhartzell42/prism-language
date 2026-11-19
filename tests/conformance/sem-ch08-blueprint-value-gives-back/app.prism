@@ -1,0 +1,26 @@
+# A blueprint value applied by a line that gives something back: a plain function gives a
+# blueprint of `@Nat` inside an option, and the arm that takes it out binds its plain
+# result (Semantics ch. 8: "a blueprint builds nothing until a block applies it", at the
+# applying block's next positions; `<-` builds the child and binds its result; Type
+# System ch. 2: a blueprint is an opaque handle and still a value). Written by Claude on
+# the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Counted: @Nat
+@Counted:
+    Ui.Label($text=$"counted")
+    @ 7
+
+@Page: fn Bool -> @unit
+fn @Page b:
+    match ?Pick b, @Counted:                                     # 0 and 1, or 0
+        ? @t:
+            n <- @t
+            Ui.Label($text=$"got {n}")
+        nil: Ui.Label($text=$"none")
+    Ui.Label($text=$"end")                                       # 2, or 1

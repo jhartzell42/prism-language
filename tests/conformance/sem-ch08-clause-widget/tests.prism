@@ -1,0 +1,12 @@
+# Audited: @Notes's label is place 0 and @Note's, inlined transparently, takes the caller's place 1 (Semantics ch. 8); each text follows from its clause.
+# The clause widget's tests: declarations of sem-ch08-clause-widget.prism (Semantics chapter 6).
+emit Ui.*
+use App.*
+
+test the_clause_is_chosen_at_the_build, @Notes (? "Mine"):
+    build
+        => expect Ui.Label(text="Mine: first")
+
+test the_other_clause, @Notes nil:
+    build
+        => expect Ui.Label(text="untitled: first")

@@ -1,0 +1,10 @@
+# The hosting library's tests, on the tally table.
+emit Ui.* | Tell.* | View.*
+use App.*
+
+test accepted, @table:
+    build
+    compute
+    click Ui.Button(label="ada +1")
+    compute
+    compute

@@ -1,0 +1,6 @@
+# The tests of sem-ch08-widget-parameter-call-argument.
+emit Ui.*
+use App.*
+
+test it_builds, @main:
+    build

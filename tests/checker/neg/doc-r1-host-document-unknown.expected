@@ -1,0 +1,4 @@
+tests/checker/neg/doc-r1-host-document-unknown.prism:18: error[unknown-name]: nothing declares `@HostDocument` here
+        ignore <- @HostDocument @child, \|path, element| match element:
+                  ^^^^^^^^^^^^^
+1 error

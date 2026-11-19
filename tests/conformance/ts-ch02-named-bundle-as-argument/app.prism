@@ -1,0 +1,22 @@
+# A bundle bound to one name and passed whole to a function (Type System ch. 2: a tuple
+# that holds events or dynamics is a bundle, a value as any other; Semantics ch. 8: a
+# widget's result bound to a name).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Two: @(($Nat, !Click))
+@Two:
+    !inc <- Ui.Button($label=$"inc")                              # 0
+    $n <- 0 then $n + 1 on !inc
+    @ (($n, !inc))
+
+$First: fn (($Nat, !Click)) -> $Nat
+fn $First (($p, !q)) = $p
+
+@main: @unit
+@main:
+    pair <- @Two                                                  # 0
+    let $shown = $First pair
+    Ui.Label($text=$"{$shown}")                                   # 1

@@ -1,0 +1,32 @@
+# A supplier written in a function merges an event over a dynamic it is given with an event
+# it is given (`1 on (!Updated $level) <| !n`): one event value of the two. prismc refused it
+# ("an event value of several events"). Written by Claude, 15 November 2026, on the
+# claude-self-hosting branch. Subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Knock of Element !Nat:
+    name: Text
+
+@door: @unit emit Ui.* | Pad.*
+@door:
+    !knocked <- Pad.Knock(name="door")                                 # 0
+    $knocks <- 0 then $knocks + 1 on !knocked
+    Ui.Label($text=$"knocks {$knocks}")                                # 1
+
+type Supplier = forall o. fn Path, prompt Element (Ui.* | Pad.*) o -> @o
+
+?Pos: fn Nat -> ?Nat
+fn ?Pos n = if n > 0: ? n else: nil
+
+Knocking: fn $Nat, !Nat -> Supplier
+fn Knocking $level, !n = \|path, prompt element| match element:
+    Pad.Knock(..): @ !Filter (?Pos (1 on (!Updated $level) <| !n))
+    otherwise: @Element element
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")                                   # 0
+    $held <- 1 then $held + 1 on !add
+    let Supply = Knocking $held, (1 on !add)
+    ignore <- @Host @door, Supply                                      # 1.[p]/0

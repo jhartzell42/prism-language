@@ -1,0 +1,6 @@
+# The tests of runtime-declaration-generic-in-its-result-packed-in-an-existential.
+emit Ui.* | Pad.*
+use App.*
+
+test told_its_seat, @page:
+    build

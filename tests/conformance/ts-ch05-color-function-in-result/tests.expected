@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 5 (a `u fn` takes its call's color; the call with a bounded lambda is bounded, so its result's functions are bounded and apply at once): 5 + 1 + 1 = 7.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="7")

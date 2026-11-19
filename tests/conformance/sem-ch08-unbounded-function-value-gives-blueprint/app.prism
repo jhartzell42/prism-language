@@ -1,0 +1,26 @@
+# A function value of an unbounded function type that gives a blueprint, applied by a
+# line of a widget block; the value is a widget with places, named and not applied,
+# given where the unbounded function type is asked (Type System ch. 2: a function is a
+# value, and a blueprint is a value a function may give; ch. 5: a bounded function is
+# given where an unbounded one is asked; Semantics ch. 8: "a blueprint builds nothing
+# until a block applies it", then at the applying block's next positions).
+# sem-ch08-widget-parameter-call-argument with the function type unbounded and the
+# value taken out of an option. Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Row: fn Nat -> @unit
+fn @Row n:
+    Ui.Label($text=$"row {n}")
+
+?Keep: fn (unbounded fn Nat -> @unit) -> ?(unbounded fn Nat -> @unit)
+fn ?Keep F = ? F
+
+@Page: @unit
+@Page:
+    match ?Keep @Row:
+        ? F: F 1
+        nil: Ui.Label($text=$"none")
+    Ui.Label($text=$"below")

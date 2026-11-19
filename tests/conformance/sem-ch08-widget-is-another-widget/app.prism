@@ -1,0 +1,13 @@
+# A widget that takes no arguments, defined as one expression that is another widget
+# (Semantics ch. 8: a blueprint is a value, and a widget's name is its blueprint).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@page: @unit
+@page:
+    Ui.Label($text=$"page")                                       # 0
+
+@main: @unit
+fn @main = @page

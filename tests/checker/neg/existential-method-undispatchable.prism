@@ -1,0 +1,41 @@
+# `existential-method` at each place a method is asked of a packed value that it cannot be
+# asked of (Jimmy's ruling EX, by Rust's rule for a `dyn` trait's methods): a packed value
+# keeps its own dictionary (Type System ch. 3, "Existentials"), so a method is asked of
+# one through a parameter of the trait's bare type and no other way. `Weigh` takes the
+# type inside `[a]` too, `Convert` has a type parameter of its own, `Empty` has no
+# parameter of the type; `Fresh` asks the whole of `^Blank` of its `a`, so it may call
+# any of them. `Extent` is asked of the packed value and is fine, and so is packing: the
+# error is at the use. Expected text derived by hand from the ruling. Written by Claude on
+# the claude-bugs branch; subject to change.
+emit Ui.*
+use Ui.*
+
+trait ^Blank a:
+    Extent: fn a -> Nat
+    Weigh: fn a, [a] -> Nat
+    Convert: fn a, (fn Nat -> b) -> b
+    Empty: a
+
+impl ^Blank Nat:
+    fn Extent n = n
+    fn Weigh n, ns = n + Len ns
+    fn Convert n, F = F n
+    fn Empty = 0
+
+Fresh: fn a -> Nat where a: ^Blank
+fn Fresh x = Extent x
+
+Hide: fn Nat -> any ^Blank
+fn Hide n = any n
+
+Uses: fn (any ^Blank) -> Nat
+fn Uses h:
+    let fine = Extent h
+    let weighed = Weigh h, [[]]
+    let converted = Convert h, \|n| n + 1
+    let fresh = Fresh h
+    fine + weighed + converted + fresh
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Uses (Hide 3)}")

@@ -1,0 +1,9 @@
+# The tests of sem-ch08-blueprint-value-gives-back.
+emit Ui.*
+use App.*
+
+test picked, @Page True:
+    build
+
+test not_picked, @Page False:
+    build

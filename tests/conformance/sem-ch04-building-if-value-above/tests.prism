@@ -1,0 +1,9 @@
+# The tests of sem-ch04-building-if-value-above.
+emit Ui.*
+use App.*
+
+test loud, @Page (Loud "x"):
+    build
+
+test soft, @Page Soft:
+    build

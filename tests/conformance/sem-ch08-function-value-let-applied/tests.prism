@@ -1,0 +1,6 @@
+# The tests of sem-ch08-function-value-let-applied.
+emit Ui.*
+use App.*
+
+test it_builds, @main:
+    build

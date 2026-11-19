@@ -1,0 +1,3 @@
+# `regex-replacement-not-regex`: `?Find` takes a `Regex`, and `%/a/b/` is a `RegexReplacement` (Appendix B).
+?First: fn Text -> ?Match
+fn ?First t = ?Find %/a/b/, t

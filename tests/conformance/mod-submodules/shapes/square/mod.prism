@@ -1,0 +1,10 @@
+# `Shapes.Square`: it and `Shapes.Circle` use each other.
+emit r
+use Shapes.Circle
+
+Area: fn Nat -> Nat
+fn Area s = s * s
+
+# The area of the largest circle inside a square of side `2 * h`.
+Inside: fn Nat -> Nat
+fn Inside h = Shapes.Circle.Area h

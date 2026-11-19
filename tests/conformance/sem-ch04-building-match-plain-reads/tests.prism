@@ -1,0 +1,7 @@
+# The tests of sem-ch04-building-match-plain-reads.
+emit Ui.*
+use App.*
+
+test below_the_match, @main:
+    build
+        => expect Ui.Label(text="twice 20")

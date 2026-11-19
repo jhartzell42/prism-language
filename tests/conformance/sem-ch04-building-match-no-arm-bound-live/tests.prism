@@ -1,0 +1,6 @@
+# The tests of sem-ch04-building-match-no-arm-bound-live.
+emit Ui.*
+use App.*
+
+test nothing_asked, @Slot nil:
+    build

@@ -1,0 +1,13 @@
+# A checked cast's type is non-empty; only an array or a map is non-empty; and a non-empty
+# array has no length zero (Type System ch. 2, "Collections" and "Exhaustiveness, with
+# rows"). Written by Claude on the claude-bugs branch; subject to change.
+?Checked: fn [Nat] -> ?[Nat]
+fn ?Checked xs = xs as [Nat]?
+
+Wrapped: fn (Nat)+ -> Nat
+fn Wrapped n = 0
+
+Empty: fn [Nat]+ -> Text
+fn Empty xs = match xs:
+    [[]]: "empty"
+    otherwise: "some"

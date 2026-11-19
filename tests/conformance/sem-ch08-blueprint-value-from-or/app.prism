@@ -1,0 +1,26 @@
+# A blueprint value taken out of an optional by `Or`, bound by a `let` and applied as a
+# line (Semantics ch. 8: a blueprint is a value, and applying one builds it; Type System
+# ch. 1: `Or` at `@unit`). Reaches the internal error "a prismc bug: a building line that
+# is no element, blueprint or builder" (`BuildLineNow`) on prismc-fd1.
+# Written by Claude (sweep-7, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@One: @unit
+@One:
+    Ui.Label($text=$"one")
+
+@Two: @unit
+@Two:
+    Ui.Label($text=$"two")
+    Ui.Label($text=$"three")
+
+?Chosen: fn Bool -> ?@unit
+fn ?Chosen b = if b: ? @One else: ? @Two
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    let @w = Or (?Chosen loud), @One
+    @w                                                                 # 0, or 0 and 1
+    Ui.Label($text=$"end")                                             # 1, or 2

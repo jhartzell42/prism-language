@@ -1,0 +1,189 @@
+# Step 2: the compiler catching up to every failing test
+
+The loop's step 2 (RULES.md, 13 November): every change to prismc/ for every test in
+claude/red.md, in one pass, type-checked against prismc-p11 with the library before its
+final form (shared/loop/chkc.sh, about a minute), and no build until the list is done.
+Written by Claude on the claude-self-hosting branch; subject to change.
+
+## Done (type-checked, not built)
+
+- The saved brace-placeholder patch (TpBadEscape, the brace block's span).
+- EI: an impl that is its header alone.
+- SD: a sub-trait's default for a method above. `TraitInfo.aboveDefaults`, keyed
+  `"{cls} default {method}"`; `AboveDefaults` (env/decls) gives each impl the lowest
+  rung's default as `ImplInfo.aboveChosen`, `ambiguous` for two unrelated rungs; the
+  default is checked with `AboveScheme` (check/mod); lowering: `ImplDefOf` writes the
+  method from the default's clauses with the rung's parameter read as the head,
+  `MethodTargets`/`ImplTargets` instantiate it, and inlined widget methods take it
+  (`?ImplWidgetClauses`, `?WidgetDefaultSubst`, `InlineWidget` wrapping
+  `InlineWidgetBody`).
+- OS and UA: own names shadow `use X.*` and the prelude (`Shadowing`, env/names);
+  `use X.Name as Y` (`Use.?alias`).
+- VA: "variant" in diagnostics, `assoc-variant-missing`/`-duplicate`.
+- HD: a map literal keeps its values whole (`ApplyRuleOf`'s `wholeNow`).
+- OP: `Fixed<<r>>` against a variable (`FixedAgainstVariable`); a tag arm narrows its
+  scrutinee to the tag's family (`Narrowed`).
+- DE: a derive's equalities (`Bound.?equals`, `ViaDecl.bounds`, `BoundAt`/`TypeAt` in
+  reading.prism, `ImplInfo.equalities` checked in `ImplsComplete`).
+- `unit` as the empty row; an associated row's default (`TraitInfo.assocRowDefaults`,
+  `ImplRowDefaults`).
+- Utf8Bytes, ~Utf8Text in the Rust prelude (`utf8_bytes`, `utf8_text_try`; the names
+  are a guess at the lowering's naming, to confirm at the build) and `Prelude.NotText`.
+- Result-only calls: `?EitherSelf` (lower/expr) replaces an `Or` over optionals, which
+  kept a `nil` and made five ts-ch03 tests and forall-three-jobs "a call at a type the
+  checker did not record".
+- FA inside types: `TyForall` (check/types/mod) through substitution, zonking, showing,
+  unification (`OpenForall`), a fresh instance at each use of a local (`InferNameIn`);
+  Rust holds its variables as `prism_rtl::Packed` (`OutTyOf`).
+- RR: a type's parameter written only in a row's place takes a row
+  (`TyInfo.rowParams`, `RowParamsOf`; the argument held as `TyElemAny rw`; `ParamInst`
+  puts it in `rows` as `TlRow rw`, which `SubstRowQ` merges). `UsesScope` no longer
+  reads a blueprint that writes its own `emit` as using the module's row.
+- RT: rows of several variables (`TlUnion`, `UnionTail`) through `ConvRow`,
+  `SubstRowQ`, `WalkRow`, `UnifyRowRest` and `DischargeOne`.
+- Test slips found on the way: ts-ch02-regex-values (a map shows as `{{..}}`),
+  ts-ch03-associated-row (a widget call's one element is at the call's place); library:
+  a supplier's answer emits nothing, `emit unit`.
+
+- A widget method whose parameters hold only associated types finds its impl and its
+  default by the callee's type at the call (`?WidgetMethodImpl`, lower/node/static).
+- Kinded type variables at run time: a function's hidden leading `{r}_variant: &Nat`
+  parameters (`KindsOf`/`KindsOfVal`, lower/functions; `lx.kinded`), given at each
+  declared call (`KindArgs`, lower/expr, from `?ParamMatch` of the callee's type there);
+  `ValueOf<<r>>` (`?KindedVariant`, an if-chain from the number), `Fixed<<r>>`
+  (`?KindedNumber`), and the `Fixed<<r>>` pattern (a guard). Not yet: a kinded function
+  as a value or partly applied (no hidden arguments there), a widget function's.
+- Checker reds: the ambiguous result-only call names `Step<<d>>`
+  (`?OnlyThroughAssoc`); an escaping existential by its alias (`AliasOrShown`;
+  `?MatchHead` reads associated types, roles and rigids); a constructor argument takes its
+  parameter's type first (`Env.?expect`); a program that is its own Prelude is checked
+  without the library's other modules.
+
+- The CLI World answers `Net` over TCP (worlds/cli/rust/src/net.rs; `cargo check` clean).
+- A `forall` value applied packs its arguments and unpacks its result (`PackedApply`,
+  `prism_rtl::unpacked`). Not yet: making such a value from a generic function by name.
+
+- PT: `prompt` marks in `TFn`/`ELambda` (parser: `ParseParamType`, `LambdaParam`) and
+  in `TyFn`'s fourth field; `ShowTy` writes them; `Unify` leaves them alone and then asks
+  `PromptsFitTy` (fewer marks stand where more are wanted, parameters the other way); a
+  lambda marked where the wanted function is not is a `mismatch` (`PromptsFit`). The
+  prompt-cycle check reads a call's edges from its callee's marks (`?CalleeMarks`,
+  `LocalMarks`, `FlowsOfMarks`); the summary walk and the uses machinery are gone;
+  `prompt-unmarked` at a widget function's body (`BodyMarked`) and a widget lambda's
+  (`LambdasMarked`).
+
+- MB, first part: existentials over kinded variables (`Packed` with variant numbers;
+  `ExistsMatch`/`OpenedAt` lower an `any` arm once per variant; `TyExists` keeps its
+  kinds; the checker notes the opened type at the inner pattern). Not yet: an `any`
+  pattern anywhere but a one-arm plain `match` (a clause's parameter, a widget block's
+  `match`, a supplier's `Asking d o`), and existentials over variables with no kind.
+
+- MB, doc-sk: a definition that opens an existential by its own variable's roles, and a
+  generic function that calls one at its own variables, is lowered once per
+  instantiation (`OpensByVariable`, `InstanceFns`, `CallInstance`). Not yet: such a
+  definition used as a value (not called by name), or called from a widget function's
+  generic body.
+
+## Claude's calls that change no semantics (Jimmy, 13 November: "MB/LR decisions that
+## don't influence semantics are yours, if they're dicey put them in the handover doc")
+
+- MB, dicey, revised 14 November on reading the lowering: kinded type variables are already
+  Rust generic parameters over the promoted unit structs (`TyRole`), with each variable's
+  variant number a hidden leading `{r}_variant` argument. So the back end keeps its Rust
+  generics and does not monomorphize whole definitions. Instead:
+  - an existential over kinded variables, `any (r: Role d): T`, is a `prism_rtl::Packed`
+    whose value is `T` at the packing site's `r`, beside each hidden variable's variant
+    number (`Packed::with_kinds`);
+  - opening it (`any p` in a pattern, a supplier's `Asking d o`) is a match over those
+    numbers, each arm lowered with `lx.subst` giving `r` that variant, so the arm's code is
+    monomorphic where Rust needs it;
+  - an associated type indexed at a kinded variable (`Request d r`) is lowered the same
+    way where a value of it is opened, and as a `Packed` where it is only held.
+  Why dicey: it duplicates an opening arm once per variant. Refused alternatives: whole-
+  program monomorphization (large, and nothing it adds is needed), and `Rc<dyn Any>` with
+  no variant numbers (an arm could not tell which type to read back).
+
+## Known gaps, noted
+
+- PT soundness (Jimmy, 14 November: "Allowing unsoundness is a critical bug"): closed so
+  far, each with a test: a function-typed parameter takes the mark (choice (a)); at a
+  marked parameter everything the argument captures is read (`MarkedArgKids`); a binding
+  that holds a function value reads what it captures (`CaptureReads`); every widget body
+  is read against its marks (`BodyMarked`, `LocalsMarked`, `LambdasMarked`, impl methods
+  by `SignedKey`, defaults by their own or the signing trait's signature); expression
+  bodies (`ExprBodyMarked`); top-level `let` lambdas (`TopLambdasMarked`). Audited and
+  found sound: a clause per variant (`Fixed<<r>>` dispatch: each clause's body is read);
+  a trait method's call (its marks are the trait's signature's, and every impl is read
+  against them). Not yet audited: a widget function given where only its type is known
+  through a type variable (`a` instantiated at a function type), which no body can apply.
+
+## Asked of Jimmy
+
+- MB: the Rust representation of values whose type depends on a variable (existentials
+  over role variables; indexed associated types at a variable). Claude recommends
+  monomorphizing over the instantiation fixed point. Blocks: existential lowering,
+  doc-c4 family associated types, doc-sk, the library's builtins.
+- The hold cycle through a parameter given a lambda: answered by PT (promptness in the
+  type, checked locally).
+- PT's spelling, per parameter: `fn prompt !Nat -> @!Nat`, `\|prompt !e| ..` (Claude's call,
+  flagged; Jimmy okayed the whole-function spelling before ruling per parameter).
+
+## Left
+
+
+- FA call sites: a value of a `forall` type applied in Rust must pack its arguments and
+  unpack its result (`Packed::of(..).packed()`, `.held::<T>()`); not written.
+- Lowering, MB: family associated types (doc-c4, every-role). Done: a tag's field of an
+  associated type at the tag's variables is erased to plain data (`AssocErased`) and
+  recoded at each site (`RecodedField`), as a generic tag's field already was. Also done: a program's generic
+  type with such a field (`Declined (Reason d r)`) holds it as `Pod` (`CaseField`,
+  `AssocPodOut`), recoded by a constructor's application and a constructor pattern
+  (`AssocPodPat`) (Claude's call, dicey: refused alternative, a Rust trait per indexed
+  associated type, `impl ReasonOf<Count> for Raiser`, with its bounds on every generic
+  definition). Left: a record's such field read by `.field`.
+
+- Done: partial application given to a widget function parameter (doc-c5;
+  `PartialWidgetLine`: the given arguments bound by their places). Not yet: a partial
+  application held as a value elsewhere (a `let`, a list).
+- Done after: doc-c6 (`BindHosted` binds a tuple pattern part by part). Its cause, in p11's Rust for the test (compiled in the scratch tree,
+  `target/c6t`), the hosted child's `!inc` handler (`inc_e0_3`) sets its own hold and
+  fires its own port, but the parent's `!clicked` (`clicked_e1`, `clicked_e1_v_port`) is
+  a port nobody fires: the event part of a `@Host`'s result bundle is bound apart from
+  the child's event (`BindParts`, lower/node/def.prism, handles the inlined-call case;
+  the host's result is another path).
+- The library's builtins with no body: done `SeatPathOf`, `SeatIdAt`, `$Merge`,
+  `$GuestsOf` (`prism_rtl::documents`, `LibraryBuiltinCall`). Left, the remote protocol:
+  `@Answer`, `!Outgoing`, `?ResponseFrom`, `$?AnswerFrom`. They read and write a guest's
+  request events, query dynamics, responses and answers as `Message`s of POD bytes, at
+  each place's role, over a live set of places: the lowering must give the runtime, per
+  role, closures that take a request or query out of an element and put a response or
+  answer back, since the element types are the program's.
+- Done: notes in diagnostics (`CDiag.note`, `DiagNote`); a waiting equation's mismatch shows
+  its whole types and, for an element's field, the guest row (doc-c4-watcher).
+- The ten old lowering reds (sem-ch04/08/09 late values, widget values).
+- Then: the first check of the library, the tally, c6, c8 and chess with the new
+  compiler, and their remaining errors (the prompt-cycle, the agent's two unconfirmed
+  reports).
+
+## 14 November: gen2's library errors (build13, build14)
+
+Fixed in prismc, each with its failing test first (tests/checker/pos/):
+- a lambda where a quantified function is wanted is checked at rigid variables
+  (lambda-where-quantified-function-wanted); a quantified function takes a capital name and
+  applies at fresh variables (case-mark-on-a-quantified-function);
+- a `Fixed<<Left>>` arm's narrowing reaches associated-type indices (`SubstRigid` now walks
+  `TyAssoc`, `TyExists`, `TyForall`), and a kind an associated type gives at a named type
+  (`s: Side Box`) is covered through its impl (`AssocKindKey`, `KindThroughImpl`)
+  (fixed-arm-narrows-its-variable);
+- a method's `<<..>>` gives the trait's parameter first (method-type-arguments-trait-first);
+- a match that ends an arm is checked at the outer match's type (`ArmBlockAt`)
+  (match-in-an-any-arm-narrows);
+- `@ v` where a blueprint is wanted checks `v` at the blueprint's value, and a widget
+  block's last `@ v` line is checked so (blueprint-of-a-lambda-takes-the-type).
+- pos tests have no `module` line: a file with one and no `emit` is a library
+  (`emit-element`), so type-arguments-in-forall-order lost its.
+Library text: the protocol's places built by `rebuild` over a place's kind and a query,
+lists of one through `One` so they lift, `Departed` so `on` lifts over the event only,
+`@Outgoing`/`@AnswerFrom` emit nothing, `prompt` on `Supply`, on the suppliers' `asking`,
+on the guests of the implementations and on `@Query`'s seat id (open question to Jimmy:
+`SeatId d _: ^Pod` on `^Document` would make that mark unneeded).

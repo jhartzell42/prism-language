@@ -1,0 +1,6 @@
+# The tests of doc-c8-derive-via-asks-equalities.
+emit Ui.*
+use App.*
+
+test applied, @page:
+    build

@@ -1,0 +1,6 @@
+# The tests of ts-ch03-associated-row-default.
+emit Ui.*
+use App.*
+
+test default_row, @page:
+    build

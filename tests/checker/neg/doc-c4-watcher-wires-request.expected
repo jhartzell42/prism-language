@@ -1,0 +1,5 @@
+tests/checker/neg/doc-c4-watcher-wires-request.prism:60: error[mismatch]: expected `!Never`, found `!Raise`
+        !response <- Seat.Request(!requests=!raises)
+                                            ^^^^^^^
+  note: this guest emits `Seat.* Count Watcher`, and `Request Count Watcher` is `Never`
+1 error

@@ -1,0 +1,13 @@
+# Derived by hand from Part III ch. 6 (an existential opened tells its arm the role; `Fixed<<r>>` matches a value of that role alone) and Semantics ch. 4: the watcher hears the words said to watchers when speak is clicked.
+test heard_at_its_role
+
+tick 0
+  added:
+    0: Ui.Button(label="speak")
+    1: Ui.Label(text="ada heard nothing")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="ada heard to watchers")

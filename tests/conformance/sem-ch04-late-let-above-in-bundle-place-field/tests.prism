@@ -1,0 +1,11 @@
+# The tests of sem-ch04-late-let-above-in-bundle-place-field.
+# The World's state for the element is the whole first value, the plain part and the `$` part's current value.
+emit Ui.* | Pad.*
+use App.*
+
+test loud, @Page (Loud "x"):
+    with Pad.Port(name="port 11") = ((7, "up")), build
+    push Pad.Port(name="port 11") = ((7, "down"))
+
+test soft, @Page Soft:
+    with Pad.Port(name="port 21") = ((8, "up")), build

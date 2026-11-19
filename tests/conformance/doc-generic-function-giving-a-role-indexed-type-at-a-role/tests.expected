@@ -1,0 +1,13 @@
+# Derived by hand from Part III ch. 6 (a role-indexed type at a constructor index is that role's equation's) and Semantics ch. 4: a teller's seat is a text, a keeper's a number; the click makes the teller's seat "teller 1".
+test seat_at_each_role
+
+tick 0
+  added:
+    0: Ui.Button(label="next")
+    1: Ui.Label(text="none; keeper 40")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="teller 1; keeper 40")

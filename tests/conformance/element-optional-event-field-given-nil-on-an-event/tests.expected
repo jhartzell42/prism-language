@@ -1,0 +1,21 @@
+# Derived by hand from Semantics ch. 8 (an element's event field fires a request at its place, with the event's value) and Appendix B's transcript form (a request printed as its value's text): the first click requests nil at place 2, the second `? "bye"` at place 3. An element with no plain field prints as its tag alone (the World's transcript form).
+test nil_then_a_value
+
+tick 0
+  added:
+    0: Ui.Button(label="leave")
+    1: Ui.Button(label="say bye and leave")
+    2: Pad.Leave
+    3: Pad.Leave
+
+tick 1
+  in:
+    0: click
+  requested:
+    2: nil
+
+tick 2
+  in:
+    1: click
+  requested:
+    2: ? "bye"

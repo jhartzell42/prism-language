@@ -1,0 +1,22 @@
+# `!Both` called with events in a plain function that gives an event (Type System ch. 4, "A sigiled parameter is not lifted over": the call is not lifted,
+# its event arguments are event values; Appendix B: `!Both`
+# fires in a tick in which both fire, with the pair). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Total: fn ((Nat, Nat)) -> Nat
+fn Total ((a, b)) = a + b
+
+!Sum: fn !Nat, !Nat -> !Nat
+fn !Sum !left, !right = Total (!Both !left, !right)
+
+@page: @unit
+@page:
+    !left <- Ui.Button($label=$"left")                           # 0
+    !right <- Ui.Button($label=$"right")                         # 1
+    let !sum = !Sum (1 on !left), (2 on !right)
+    $firings <- 0 then $firings + 1 on !sum
+    $last <- 0 then !sum
+    Ui.Label($text=$"{$firings}: {$last}")                       # 2

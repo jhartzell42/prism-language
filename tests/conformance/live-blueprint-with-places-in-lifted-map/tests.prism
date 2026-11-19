@@ -1,0 +1,7 @@
+# The tests of live-blueprint-with-places-in-lifted-map.
+emit Ui.*
+use App.*
+
+test seated_on_add, @page:
+    build
+    click at 0

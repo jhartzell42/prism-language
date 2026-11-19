@@ -1,0 +1,8 @@
+# The tests of sem-ch09-host-local-supplier-dynamic-parameter.
+emit Ui.* | Pad.*
+use App.*
+
+test a_local_function_answers_its_parameter, @host:
+    build
+    click at 0
+    compute

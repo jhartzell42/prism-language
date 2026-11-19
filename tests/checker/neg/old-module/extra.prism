@@ -1,0 +1,5 @@
+module Extra
+emit r
+
+Extra: fn Nat -> Nat
+fn Extra n = n

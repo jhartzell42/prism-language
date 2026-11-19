@@ -1,0 +1,32 @@
+# Two bare names that collide are an error at the use (Semantics ch. 6, "A file is a
+# module": "Two bare names that collide are an error at the use, both candidates named"),
+# and a pattern is a use: `Small`, `Sized` and `Pair` each come in bare from `Birds` and
+# from `Fish`. An expression that names one is refused already; a pattern took the first
+# silently. The expected text is derived by hand from the book and the expression's
+# diagnostic. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+mod Birds
+mod Fish
+use Birds.*
+use Fish.*
+use Ui.*
+
+IsSmall: fn Birds.Kind -> Bool
+fn IsSmall k = match k:
+    Small: True
+    otherwise: False
+
+Size: fn Birds.Kind -> Nat
+fn Size (Sized n) = n
+fn Size k = 0
+
+Left: fn Birds.Pair -> Nat
+fn Left (Pair(left=l, ..)) = l
+
+Large: fn Birds.Kind -> Bool
+fn Large (Birds.Large) = True
+fn Large k = False
+
+@main: @unit
+@main:
+    Ui.Label($text=$"x")

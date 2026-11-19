@@ -1,0 +1,6 @@
+# The tests of sem-ch09-tag-field-fault-of-dynamic.
+emit Ui.* | Count.*
+use App.*
+
+test a_world_reads_the_failure, @main:
+    build

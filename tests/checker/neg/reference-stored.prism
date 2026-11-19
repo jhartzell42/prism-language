@@ -1,0 +1,7 @@
+# `reference-stored`: "No reference is stored, returned or captured" (Semantics ch. 5,
+# "The borrow rule"; "Negative space": "No `&` in a block's result, a record, a closure or
+# a hold"): a record's field cannot be a reference.
+# Written by Claude on the claude-lowering branch; subject to change.
+type Holder = record:
+    label: Text
+    &slot: Int

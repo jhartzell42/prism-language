@@ -1,0 +1,8 @@
+# Existentials unpacked: declarations of ts-ch05-existential-unpacked. Written by Claude
+# on the claude-bugs branch; subject to change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test existentials_unpacked, @page:
+    build

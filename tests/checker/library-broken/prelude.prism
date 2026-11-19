@@ -1,0 +1,5 @@
+# The least Prelude the neg/library-type-error program needs.
+emit r
+
+type Element o = row
+type Fault = row

@@ -1,0 +1,6 @@
+# The tests of partial-widget-with-type-arguments.
+emit Ui.*
+use App.*
+
+test applied_once, @page:
+    build

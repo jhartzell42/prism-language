@@ -1,0 +1,15 @@
+# A fault kind is a tag `of Fault`, a row kind with no output, and its value is the tag
+# itself: `Error(kind=Fs.NotFound, ..)` (Semantics ch. 10, "`~T`, `Error` and `Fault` as a
+# row"; doubt FP: "a row kind with no output has values that are its tags"). Applied to an
+# argument list it is nothing. prismc's back end refuses it today ("a fault kind
+# applied"); the checker should. Written by Claude on the claude-lowering branch; subject
+# to change.
+emit Ui.*
+use Ui.*
+
+Gone: fn Nat -> Error
+fn Gone n = Error(kind=Fs.NotFound(), message="gone {n}")
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{(Gone 1).message}")

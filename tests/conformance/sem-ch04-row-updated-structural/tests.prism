@@ -1,0 +1,11 @@
+# Audited: the add builds row 2 at tick 1; the gathered dynamic is published at the owed
+# tick 2, where the other `for`'s row hears it once, with both rows.
+# The tests of sem-ch04-row-updated-structural (Semantics chapters 4 and 7).
+emit Ui.*
+use App.*
+use Ui.*
+
+test a_row_hears_the_blocks_gathered_dynamic, @gathered:
+    build
+    click at 0
+    compute

@@ -1,0 +1,7 @@
+tests/checker/neg/drop-text.prism:3: error[mismatch]: expected `Text`, found `[t2]`
+    fn Rest t = Drop t, 1
+                ^^^^^^^^^
+tests/checker/neg/drop-text.prism:3: error[mismatch]: expected `[t2]`, found `Text`
+    fn Rest t = Drop t, 1
+                     ^
+2 errors

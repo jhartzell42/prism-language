@@ -1,0 +1,9 @@
+# The tests of doc-c3-role-indexed-associated-types.
+emit Ui.*
+use App.*
+
+test raised_until_declined, @page:
+    build
+    click at 0
+    click at 0
+    click at 0

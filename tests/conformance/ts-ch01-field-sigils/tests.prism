@@ -1,0 +1,9 @@
+# The tests of ts-ch01-field-sigils: World patterns read sampled levels, by plain names.
+emit Ui.* | Pad.*
+use App.*
+
+test sigiled_fields, @page:
+    build
+        => expect Pad.Note(text="Ann Bo 1")
+    click at 0
+        => expect Pad.Note(text="Ann Bo 2")

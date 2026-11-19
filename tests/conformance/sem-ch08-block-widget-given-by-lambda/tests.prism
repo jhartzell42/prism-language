@@ -1,0 +1,6 @@
+# The tests of sem-ch08-block-widget-given-by-lambda.
+emit Ui.*
+use App.*
+
+test the_lambdas_blueprint_is_built, @main:
+    build

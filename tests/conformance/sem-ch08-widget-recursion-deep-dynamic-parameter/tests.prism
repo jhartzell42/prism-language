@@ -1,0 +1,9 @@
+# The tests of sem-ch08-widget-recursion-deep-dynamic-parameter.
+emit Ui.*
+use App.*
+
+test twenty_levels_read_a_dynamic, @main:
+    build
+        => expect Ui.Label(text="after")
+    click at 0
+        => expect Ui.Label(text="end: 1")

@@ -1,0 +1,22 @@
+# A one-clause widget whose parameter is a tuple pattern over a bundle, given a bundle
+# that is a function's result, neither written out nor named (Semantics ch. 8: a widget's
+# parameters are patterns, as a function's are; Type System ch. 2, "Bundles": a bundle is
+# a plain aggregate, a value any expression may give). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Both: fn !Click, $Nat -> ((!Click, $Nat))
+fn Both !tap, $count = ((!tap, $count))
+
+@Counted: fn Text, ((!Click, $Nat)) -> @unit
+fn @Counted name, ((!more, $guests)):
+    $clicks <- 0 then $clicks + 1 on !more
+    Ui.Label($text=$"{name}: {$guests} guests, {$clicks} clicks")
+
+@main: @unit
+@main:
+    !more <- Ui.Button($label=$"more")                            # 0
+    $guests <- 1 then $guests + 1 on !more
+    @Counted "b", (Both !more, $guests)                           # 1

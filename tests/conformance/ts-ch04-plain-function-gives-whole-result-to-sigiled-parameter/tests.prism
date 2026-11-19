@@ -1,0 +1,8 @@
+# Audited: `Five` gives 5 whatever its dynamic, so the label is "pick 5".
+# The tests of ts-ch04-plain-function-gives-whole-result-to-sigiled-parameter (Type System chapter 4).
+emit Ui.*
+use App.*
+
+test gives_a_whole_result_to_a_sigiled_parameter, @shown:
+    build
+        => expect Ui.Label(text="pick 5")

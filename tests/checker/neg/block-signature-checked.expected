@@ -1,0 +1,4 @@
+tests/checker/neg/block-signature-checked.prism:7: error[mismatch]: expected `[Bool]`, found `[Text]`
+        let xs = [["a"]]
+                 ^^^^^^^
+1 error

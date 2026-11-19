@@ -1,0 +1,7 @@
+# Derived by hand from Type System ch. 3 (an impl's method is its impl's) and Language ch. 6 (widget function applications are transparent).
+test framed_twice
+
+tick 0
+  added:
+    0/0/0: Ui.Label(text="box 3")
+    0/1/0: Ui.Label(text="box 3")

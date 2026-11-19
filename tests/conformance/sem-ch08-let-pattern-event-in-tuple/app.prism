@@ -1,0 +1,25 @@
+# A widget block's `let` of a tuple pattern with a tuple inside that binds an event and a
+# dynamic (Semantics ch. 4: `let` binds by any pattern that cannot fail; Type System
+# ch. 2, "Bundles": a plain aggregate with functor values inside, nested freely). Written
+# by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Counter: fn Nat -> @((!Click, $Nat))
+fn @Counter page:
+    !more <- Ui.Button($label=$"more on {page}")
+    $guests <- 1 then $guests + 1 on !more
+    @ ((!more, $guests))
+
+@Nested: fn Nat -> @((Nat, ((!Click, $Nat))))
+fn @Nested page:
+    both <- @Counter page
+    @ ((page * 10, both))
+
+@main: @unit
+@main:
+    all <- @Nested 1                                              # 0
+    let ((ten, ((!more, $guests)))) = all
+    $clicks <- 0 then $clicks + 1 on !more
+    Ui.Label($text=$"{ten}: {$guests} guests, {$clicks} clicks")  # 1

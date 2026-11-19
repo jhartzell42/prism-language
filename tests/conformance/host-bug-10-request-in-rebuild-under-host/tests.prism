@@ -1,0 +1,9 @@
+emit Ui.* | Count.* | View.*
+use App.*
+
+test presses, @host:
+    build
+    click Ui.Button(label="ada +1")
+    compute
+    compute
+    compute

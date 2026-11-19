@@ -1,0 +1,6 @@
+# The tests of own-declaration-shadows-use.
+emit Ui.*
+use App.*
+
+test own_name_wins, @page:
+    build

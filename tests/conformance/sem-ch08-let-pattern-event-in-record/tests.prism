@@ -1,0 +1,8 @@
+# The tests of sem-ch08-let-pattern-event-in-record.
+emit Ui.*
+use App.*
+
+test the_event_field_is_bound, @main:
+    build
+    click at 0
+        => expect Ui.Label(text="k: 1")

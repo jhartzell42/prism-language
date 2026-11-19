@@ -1,0 +1,13 @@
+# `ix` names the index of the loop it stands in (Semantics ch. 5: "with `ix` and `jx` as in
+# every loop"); outside a loop it names nothing. prismc's back end refuses it today ("`ix`
+# outside a `for`"); the checker should. Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.*
+use Ui.*
+
+Next: fn Nat -> Nat
+fn Next n = n + ix
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Next 1}")

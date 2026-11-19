@@ -1,0 +1,13 @@
+tests/checker/neg/unknown-constructor-pattern.prism:10: error[unknown-name]: no constructor `Rim`
+    fn Side (Rim n) = n
+             ^^^
+tests/checker/neg/unknown-constructor-pattern.prism:10: error[unknown-name]: nothing declares `n` here
+    fn Side (Rim n) = n
+                      ^
+tests/checker/neg/unknown-constructor-pattern.prism:15: error[unknown-name]: no record or tag `Rim`
+        Rim(width=w, ..): w
+        ^^^
+tests/checker/neg/unknown-constructor-pattern.prism:15: error[unknown-name]: nothing declares `w` here
+        Rim(width=w, ..): w
+                          ^
+4 errors

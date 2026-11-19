@@ -1,0 +1,20 @@
+# A local function in clauses (Semantics ch. 4, "Lambdas, `let`, and `fn` in blocks": "`fn`
+# lines may stand in any block of equations, in clauses (`fn Medal 0 = "gold"`)"): the
+# clauses are tried in order, in a plain function's block and in a widget block. prismc
+# once kept the last clause alone. Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+
+Medals: fn Nat -> Text
+fn Medals n:
+    fn Medal 0 = "gold"
+    fn Medal 1 = "silver"
+    fn Medal k = "place {k + 1}"
+    Medal n
+
+@page: @unit
+@page:
+    fn Size 0 = "none"
+    fn Size k = "{k}"
+    Ui.Label($text=$"{Medals 0} {Medals 1} {Medals 4} {Size 0} {Size 3}")   # 0

@@ -1,0 +1,8 @@
+# Derived by hand from Semantics Appendix B, Text: `?Step` gives the character at the cursor and the cursor past it, so the walk passes the byte index of every character boundary (h at 0, é at 1, l at 3, l at 4, o at 5, → at 6, 世 at 9, 界 at 12, the end at 15) and gives the sample's eight characters; four of them are ASCII letters.
+check step
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok

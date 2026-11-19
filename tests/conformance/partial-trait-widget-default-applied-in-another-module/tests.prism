@@ -1,0 +1,7 @@
+# The tests of partial-trait-widget-default-applied-in-another-module.
+emit Ui.*
+use App.*
+use Framing.*
+
+test started, @page:
+    build

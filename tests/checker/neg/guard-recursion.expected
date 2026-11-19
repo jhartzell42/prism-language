@@ -1,0 +1,5 @@
+tests/checker/neg/guard-recursion.prism:6: error[may-not-end]: `Spin` calls itself on `k`, not smaller than what it was given
+        k if Spin k: True
+             ^^^^^^
+  fix: make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`
+1 error

@@ -1,0 +1,9 @@
+# `a + ?b` is a sum whose right side is the option `?b`, never the checked sum `+?` and
+# never a non-empty mark: the checker refuses the option as an addend (Semantics ch. 2,
+# "Operators and punctuation"). Written by Claude on the claude-bugs branch; subject to
+# change.
+Sum: fn Nat, ?Nat -> Nat
+fn Sum a, ?b = a + ?b
+
+Marked: fn [Nat], ?Nat -> Nat
+fn Marked xs, ?b = (Or xs[0], 0)+ ?b

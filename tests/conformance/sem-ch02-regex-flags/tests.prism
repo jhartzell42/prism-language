@@ -1,0 +1,25 @@
+# The flags: declarations of sem-ch02-regex-flags.
+emit r
+use App.*
+
+check flags:
+    Spans (?Find %/abc/i, "xABCx") => "1-4"
+    Spans (?Find %/abc/, "xABCx") => "nil"
+    Spans (?Find %/k/i, "K") => "0-3"
+    Spans (?Find %/ß/i, "ss") => "nil"
+    Spans (?Find %/^b/, "a\nb") => "nil"
+    Spans (?Find %/^b/m, "a\nb") => "2-3"
+    Spans (?Find %/a$/, "a\nb") => "nil"
+    Spans (?Find %/a$/m, "a\nb") => "0-1"
+    Spans (?Find %/a.b/, "a\nb") => "nil"
+    Spans (?Find %/a.b/s, "a\nb") => "0-3"
+    Spans (?Find %/^a.b$/ms, "x\na\nb") => "2-5"
+
+check inline:
+    Spans (?Find %/(?i)abc/, "xABC") => "1-4"
+    Spans (?Find %/(?i:a)b/, "AB") => "nil"
+    Spans (?Find %/(?i:a)b/, "Ab") => "0-2"
+    Spans (?Find %/a(?i)b|c/, "C") => "0-1"
+    Spans (?Find %/(?-i:a)b/i, "aB") => "0-2"
+    Spans (?Find %/(?-i:a)b/i, "AB") => "nil"
+    Spans (?Find %/(?s).(?-s)./, "\n\n") => "nil"

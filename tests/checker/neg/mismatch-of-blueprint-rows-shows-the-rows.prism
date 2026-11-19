@@ -1,0 +1,19 @@
+# Two function types that differ only in a blueprint's row print alike, so the mismatch
+# shows them with their names qualified and their rows (`ShowTyQ`): `@Quiet` emits nothing,
+# and `@Using` asks for a function whose blueprint emits `Ui.*`. The message said
+# "expected `fn Nat -> @Nat`, found `fn Nat -> @Nat`". Written by Claude, 15 November 2026,
+# on the claude-self-hosting branch.
+emit Ui.*
+
+@Quiet: fn Nat -> @Nat emit unit
+fn @Quiet n:
+    @ n
+
+@Using: fn (fn Nat -> @Nat) -> @unit emit Ui.*
+fn @Using Make:
+    k <- Make 3
+    Ui.Label($text=$"{k}")
+
+@page: @unit
+@page:
+    @Using @Quiet

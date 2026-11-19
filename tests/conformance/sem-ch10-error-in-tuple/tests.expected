@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 10 (a bare `Error(..)` where a `~T` is wanted is that `~T`'s failure): the first pair's fault part shows its message, the second its number.
+test error_part
+
+tick 0
+  added:
+    0: Ui.Label(text="!tup/2 1/3")

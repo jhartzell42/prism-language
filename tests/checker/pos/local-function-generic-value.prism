@@ -1,0 +1,14 @@
+# A local function with no signature is generalized (Type System ch. 5, as a `let` is,
+# pick LG): `Same` is passed as a value at `Nat` and at `Text` in one body. Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+use Ui.*
+
+Both: fn [Nat], [Text] -> Text
+fn Both ns, ts:
+    fn Same x = x
+    "{Len (Each ns, Same)} {Concat (Each ts, Same)}"
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Both [[1, 2]], [["a", "b"]]}")

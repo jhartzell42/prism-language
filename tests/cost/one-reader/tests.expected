@@ -1,0 +1,67 @@
+# Derived by hand: `$heavy` is 0 + 1 + ... + 199,999 + n = 19,999,900,000 + n after n clicks.
+test ten_writes
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="19999900000")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="19999900001")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="19999900002")
+
+tick 3
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="19999900003")
+
+tick 4
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="19999900004")
+
+tick 5
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="19999900005")
+
+tick 6
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="19999900006")
+
+tick 7
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="19999900007")
+
+tick 8
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="19999900008")
+
+tick 9
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="19999900009")
+
+tick 10
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="19999900010")

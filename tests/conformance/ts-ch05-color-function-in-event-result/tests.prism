@@ -1,0 +1,7 @@
+# The tests of ts-ch05-color-function-in-event-result.
+emit Ui.*
+use App.*
+
+test it_fires, @page:
+    build
+    click at 0

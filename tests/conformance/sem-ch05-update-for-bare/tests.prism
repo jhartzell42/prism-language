@@ -1,0 +1,7 @@
+# The tests of sem-ch05-update-for-bare.
+emit Ui.*
+use App.*
+
+test it_builds, @page:
+    build
+        => expect Ui.Label(text="11 12 7 7")

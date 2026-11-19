@@ -1,0 +1,5 @@
+tests/checker/neg/variant-collision-in-an-index/app.prism:13: error[collision]: `Viewer` is declared by more than one module this file reaches by a bare name: `Watch.Viewer`, `Shop.Viewer`
+    Told: fn Told Watching Viewer -> Nat
+                           ^^^^^^
+  fix: write the one meant qualified, as `Watch.Viewer`
+1 error

@@ -1,0 +1,8 @@
+tests/checker/neg/non-empty-literal.prism:9: error[mismatch]: an empty literal is not non-empty
+        let none = [[]]+
+                   ^^^^^
+  fix: give it an element, or drop the `+`
+tests/checker/neg/non-empty-literal.prism:10: error[mismatch]: expected `[Nat]+`, found `[Nat]`
+        First [[n]]
+              ^^^^^
+2 errors

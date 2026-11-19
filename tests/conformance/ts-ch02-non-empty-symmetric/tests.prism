@@ -1,0 +1,7 @@
+# The tests of ts-ch02-non-empty-symmetric.
+emit Ui.*
+use App.*
+
+test non_empty_symmetric, @main:
+    build
+        => expect Ui.Label(text="same same differs same 1 2 1 2")

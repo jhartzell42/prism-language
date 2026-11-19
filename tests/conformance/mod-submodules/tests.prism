@@ -1,0 +1,13 @@
+# The root's test module: `Area` is the circle's, by `use Shapes.Circle.*`; the rest by
+# their qualified names.
+emit Ui.*
+use App.*
+use Shapes.Circle.*
+
+check qualified_and_bare:
+    Shapes.Circle.Area 2 => 12
+    Area 2 => 12
+    Shapes.Square.Area 3 => 9
+    Shapes.Circle.Around 1 => 4
+    Shapes.Square.Inside 1 => 3
+    Shapes.Total 1, 2 => 7

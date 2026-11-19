@@ -1,0 +1,4 @@
+tests/checker/neg/regex-angle.prism:2: error[regex]: \< and \> are Rust's only: write \b
+    let r = %/\</
+              ^
+1 error

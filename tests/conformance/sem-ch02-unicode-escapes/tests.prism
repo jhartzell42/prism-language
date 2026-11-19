@@ -1,0 +1,8 @@
+# Unicode escapes: declarations of sem-ch02-unicode-escapes. Written by Claude on the
+# claude-bugs branch; subject to change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test escapes_name_any_scalar_value, @page:
+    build

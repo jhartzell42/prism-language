@@ -1,0 +1,19 @@
+# The tests of sem-ch07-getter-dies-with-its-row.
+emit Ui.*
+use App.*
+
+test a_let_over_the_holds_of_a_row_that_left_is_its_last_value, @ownHolds:
+    build
+    click at 1
+    click at 2
+    click at 0
+    click at 3
+    click at 1
+
+test a_let_over_a_hold_and_an_outside_dynamic_reads_the_outside_live, @withOutside:
+    build
+    click at 1
+    click at 2
+    click at 0
+    click at 3
+    click at 1

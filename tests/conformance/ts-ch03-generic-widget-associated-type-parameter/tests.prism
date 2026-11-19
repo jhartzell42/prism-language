@@ -1,0 +1,6 @@
+# The tests of ts-ch03-generic-widget-associated-type-parameter.
+emit Ui.*
+use App.*
+
+test the_move_is_shown, @Page:
+    build

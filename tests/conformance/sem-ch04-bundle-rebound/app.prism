@@ -1,0 +1,25 @@
+# A widget's bundle result bound whole to one name, named again by a `let`, and given as
+# the block's result (Type System ch. 2, "Bundles": a bundle is a plain aggregate, so a
+# name binds it and a `let` names it again; Semantics ch. 8: `<-` builds the child and
+# binds its result). The caller takes it apart as it takes `@counter`'s own. Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@counter: @((!Nat, $Nat))
+@counter:
+    !go <- Ui.Button($label=$"go")                           # 0
+    $n <- 0 then $n + 1 on !go
+    @ ((($n + 1) on !go, $n))
+
+@again: @((!Nat, $Nat))
+@again:
+    both <- @counter
+    let same = both
+    @ same
+
+@page: @unit
+@page:
+    ((!counted, $count)) <- @again
+    $last <- 0 then !counted
+    Ui.Label($text=$"{$count} after {$last}")                # 1

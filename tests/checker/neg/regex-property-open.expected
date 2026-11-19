@@ -1,0 +1,4 @@
+tests/checker/neg/regex-property-open.prism:2: error[regex]: a \p{ that is never closed
+    let r = %/\p{L/
+              ^
+1 error

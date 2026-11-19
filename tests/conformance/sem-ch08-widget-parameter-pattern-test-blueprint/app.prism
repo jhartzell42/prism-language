@@ -1,0 +1,17 @@
+# A widget of one clause whose parameter is a tuple pattern of plain names, the blueprint a
+# test builds (Semantics ch. 8: a widget's parameters are patterns, as a function's are;
+# a test applies its blueprint to its argument as any line does). conformance/
+# sem-ch08-widget-parameter-pattern applies such a widget as a line of `@main`, which
+# lowers; as a test's blueprint each name of the pattern reaches the internal error "the
+# name `name`, which nothing declares" on prismc-s4 (found by sweep-5 writing
+# sem-ch09-host-late-value-above-below-building-if).
+# Written by Claude (sweep-5, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Page: fn ((Text, Nat)) -> @unit
+fn @Page ((name, count)):
+    Ui.Label($text=$"{name}: {count}")                           # 0
+    if count > 2:
+        Ui.Label($text=$"many")                                  # 1

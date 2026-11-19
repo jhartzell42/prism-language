@@ -1,0 +1,13 @@
+tests/checker/neg/single-brace-map.prism:6: error[single-brace-map]: a map literal is doubled, and single braces hold
+    fn Scores n = {"ada": n, "bo": n + 2}
+                  ^^^^^^^^^^^^^^^^^^^^^^^
+  fix: write `{{"ada": n, "bo": n + 2}}`
+tests/checker/neg/single-brace-map.prism:9: error[single-brace-map]: a map literal is doubled, and single braces hold
+    fn Picked n = if n == 0: {} else: {"n": n}
+                             ^^
+  fix: write `{{}}`
+tests/checker/neg/single-brace-map.prism:9: error[single-brace-map]: a map literal is doubled, and single braces hold
+    fn Picked n = if n == 0: {} else: {"n": n}
+                                      ^^^^^^^^
+  fix: write `{{"n": n}}`
+3 errors

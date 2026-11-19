@@ -1,0 +1,7 @@
+# Derived by hand: planting 2 then 1 makes a tree of two nodes; planting 3 in a leaf is
+# `Node Leaf, 3, Leaf`.
+test generic_case_in_generic_fn
+
+tick 0
+  added:
+    0: Ui.Label(text="2 True")

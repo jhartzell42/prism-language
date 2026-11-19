@@ -1,0 +1,18 @@
+# A widget of several clauses has arguments for its clauses to tell apart. A second block
+# for a widget that takes none can never be chosen: written `fn @Twice:` twice the checker
+# says `unreachable`; written as two bare blocks it lets the program through today, and
+# the back end builds the first (its guard "a widget of several clauses that takes no
+# arguments", lower/node/static.prism, stands behind). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+use Ui.*
+
+@Twice: @unit
+@Twice:
+    Ui.Label($text=$"one")
+@Twice:
+    Ui.Label($text=$"two")
+
+@page: @unit
+@page:
+    @Twice

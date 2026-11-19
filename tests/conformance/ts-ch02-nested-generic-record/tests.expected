@@ -1,0 +1,6 @@
+# Derived by hand: the record shows with its field names, nested.
+test nested_generic_record
+
+tick 0
+  added:
+    0: Ui.Label(text="Wrap(inner=Wrap(inner=3)) 3")

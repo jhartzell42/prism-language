@@ -1,0 +1,15 @@
+# args: --unused
+# `unused`: a top-level function nothing uses is a warning, which fails nothing; one that
+# a definition calls is not, and neither is the root.
+emit Ui.*
+use Ui.*
+
+Helper: fn Nat -> Nat
+fn Helper n = n + 1
+
+Forgotten: fn Nat -> Nat
+fn Forgotten n = n * 2
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Helper 1}")

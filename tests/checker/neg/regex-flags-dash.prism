@@ -1,0 +1,2 @@
+# `regex-flags-dash`: a literal outside the dialect (claude/regex-dialect.md), refused before tick 0.
+let r = %/(?i-)/

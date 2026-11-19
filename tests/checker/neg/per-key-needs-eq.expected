@@ -1,0 +1,5 @@
+tests/checker/neg/per-key-needs-eq.prism:10: error[no-impl]: no impl of `^Eq` for `Opaque`
+        $each <- @PerKey $o
+                 ^^^^^^^^^^
+  fix: derive `^Eq` on `Opaque`, or write `impl ^Eq Opaque`
+1 error

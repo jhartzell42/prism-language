@@ -1,0 +1,16 @@
+# A lambda is checked as a named function is (Jimmy, 13 November, ruling PT): `\|!e| @ !e`
+# gives its argument back in the same tick, so it is prompt, and it stands where a function
+# that is not prompt is wanted without saying so.
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+@Use: fn (fn !Nat -> @!Nat) -> @unit emit Ui.*
+fn @Use Make:
+    !press <- Ui.Button($label=$"press")
+    !made <- Make (1 on !press)
+    Ui.Label($text=$"used")
+
+@main: @unit emit Ui.*
+@main:
+    @Use \|!e| @ !e

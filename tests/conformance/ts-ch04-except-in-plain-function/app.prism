@@ -1,0 +1,19 @@
+# `!Except` called with events in a plain function that gives an event (Type System ch. 4, "A sigiled parameter is not lifted over": the call is not lifted,
+# its event arguments are event values; Appendix B:
+# `!Except` fires the left in a tick in which the right does not fire). Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+!Alone: fn !Nat, !Nat -> !Nat
+fn !Alone !left, !right = 10 + (!Except !left, !right)
+
+@page: @unit
+@page:
+    !left <- Ui.Button($label=$"left")                           # 0
+    !right <- Ui.Button($label=$"right")                         # 1
+    let !alone = !Alone (1 on !left), (2 on !right)
+    $firings <- 0 then $firings + 1 on !alone
+    $last <- 0 then !alone
+    Ui.Label($text=$"{$firings}: {$last}")                       # 2

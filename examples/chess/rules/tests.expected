@@ -1,0 +1,28 @@
+check the_opening
+1: ok
+2: ok
+3: ok
+4: ok
+
+check a_promotion_is_its_own_move
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+
+check insufficient_material
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok
+
+check lasting_moves
+1: ok
+2: ok
+3: ok

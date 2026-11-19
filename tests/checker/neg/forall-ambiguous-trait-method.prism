@@ -1,0 +1,13 @@
+# Jimmy's ruling, 12 November: `forall`. `Step`'s trait parameter `d` appears only inside
+# the associated type `State d`, and an associated type does not determine its argument,
+# so nothing in `Step state` decides which `^Machine` impl to use, even with `d` in scope
+# from `Once`'s `forall`: `ambiguous`. `Step<<d>> state` names it and checks
+# (conformance/forall-three-jobs).
+# Expected diagnostic derived by hand. Written by Claude on the claude-self-hosting
+# branch; subject to change.
+trait ^Machine d:
+    type State
+    Step: fn State d -> State d
+
+Once: forall d. fn State d -> State d where d: ^Machine
+fn Once state = Step state

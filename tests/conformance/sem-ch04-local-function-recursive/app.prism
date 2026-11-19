@@ -1,0 +1,18 @@
+# A local function that calls itself (Semantics ch. 4, "Lambdas, `let`, and `fn` in blocks":
+# a `fn` line is a function of the block, and a function may call itself).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Total: fn Nat -> Nat
+fn Total n:
+    Go: fn Nat, Nat -> Nat
+    fn Go k, acc = match k -? 1:
+        ? less: Go less, acc + k
+        nil: acc
+    Go n, 0
+
+@page: @unit
+@page:
+    Ui.Label($text=$"sum {Total 4}")

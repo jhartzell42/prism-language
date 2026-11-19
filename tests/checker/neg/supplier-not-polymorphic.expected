@@ -1,0 +1,4 @@
+tests/checker/neg/supplier-not-polymorphic.prism:17: error[mismatch]: expected `forall o. fn Path, prompt Element (Fs.* | Ui.*) o -> @o`, found `fn Path, Element (Fs.* | Ui.*) $~Contents -> @$~Contents`
+        ignore <- @Host @child, @Fixed                        # 0/[p]
+                                ^^^^^^
+1 error

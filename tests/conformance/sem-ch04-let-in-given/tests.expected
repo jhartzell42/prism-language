@@ -1,0 +1,6 @@
+# Derived by hand (ruling MS): each `let` binds the value as it is, and `<-` binds through it; the failed one gives up with its `Error`.
+test let_binds_whole
+
+tick 0
+  added:
+    0: Ui.Label(text="4 5 !no 7")

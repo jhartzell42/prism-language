@@ -1,0 +1,8 @@
+# Derived by hand from Part III ch. 5 (each role's request and reason are written by their own `^SerializableValue`) and the encodings written here: `Add 3` as "3", `Clear` as "clear", a declined response as "-" then its reason, read back at the teller's reason type.
+test written_at_each_role
+
+tick 0
+  added:
+    0: Ui.Label(text="add: 3")
+    1: Ui.Label(text="clear: clear")
+    2: Ui.Label(text="sent -5, read declined, stops at 5")

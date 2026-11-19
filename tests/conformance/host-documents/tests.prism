@@ -1,0 +1,233 @@
+# The hosting library's tests, on the tally table. Every test builds, then computes twice:
+# a seat's first answer reaches it two ticks after it is built (NOTES, "Tick lag").
+# Written by Claude (an implementation agent), 11 November 2026; evidence for Part IV;
+# subject to change.
+emit Ui.* | Tell.* | Keep.* | View.*
+use App.*
+
+# A request fired at tick 3 has its response at tick 4, and both tellers are told the new total
+# in that same tick.
+test accepted, @table:
+    build
+    compute
+    compute
+        => expect Ui.Label(text="ada: total 0, may add; nothing yet")
+    click Ui.Button(label="ada +1")
+    compute
+        => expect Ui.Label(text="ada: total 1, may not add; accepted")
+        => expect Ui.Label(text="bob: total 1, may add; nothing yet")
+
+# A step that the rules deny: the response holds the teller's reason, `StopsAt 5`, which
+# the teller puts into words, and nobody's answer moves.
+test declined, @table:
+    build
+    compute
+    compute
+    click Ui.Button(label="ada +2")
+    click Ui.Button(label="bob +2")
+    click Ui.Button(label="ada +2")
+    compute
+        => expect Ui.Label(text="ada: total 4, may add; declined: the count stops at 5")
+        => expect Ui.Label(text="bob: total 4, may not add; accepted")
+
+# Out of turn: ada adds twice in a row, and is declined with `AddedLast`.
+test wrong_turn, @table:
+    build
+    compute
+    compute
+    click Ui.Button(label="ada +1")
+    click Ui.Button(label="ada +1")
+    compute
+        => expect Ui.Label(text="ada: total 1, may not add; declined: you added last")
+
+# A viewer is told the total and nothing else, in the tick the tellers are told.
+test viewer_sees, @table:
+    build
+    click Ui.Button(label="cy joins")
+    compute
+    compute
+        => expect Ui.Label(text="cy watches: total 0")
+    click Ui.Button(label="bob +2")
+    compute
+        => expect Ui.Label(text="cy watches: total 2")
+        => expect Ui.Label(text="bob: total 2, may not add; accepted")
+
+# A viewer joins a tally under way and leaves by its own button; it joins again and the
+# table removes it. No teller is built again.
+test join_and_leave, @table:
+    build
+    compute
+    compute
+    click Ui.Button(label="ada +2")
+    click Ui.Button(label="cy joins")
+    compute
+    compute
+        => expect Ui.Label(text="cy watches: total 2")
+    click Ui.Button(label="cy leaves")
+    click Ui.Button(label="bob +1")
+    click Ui.Button(label="cy joins")
+    compute
+    compute
+        => expect Ui.Label(text="cy watches: total 3")
+    click Ui.Button(label="cy is removed")
+    click Ui.Button(label="ada +1")
+    compute
+        => expect Ui.Label(text="ada: total 4, may not add; accepted")
+
+# A keeper clears the count; a keeper that clears an empty count is declined with a
+# keeper's reason, `NothingToClear`.
+test keeper_clears, @table:
+    build
+    click Ui.Button(label="kay joins")
+    compute
+    compute
+        => expect Ui.Label(text="kay keeps: total 0, nobody added last; nothing yet")
+    click Ui.Button(label="kay clears")
+    compute
+        => expect Ui.Label(text="kay keeps: total 0, nobody added last; declined: nothing to clear")
+    click Ui.Button(label="ada +2")
+    compute
+        => expect Ui.Label(text="kay keeps: total 2, ada added last; declined: nothing to clear")
+    click Ui.Button(label="kay clears")
+    compute
+        => expect Ui.Label(text="kay keeps: total 0, nobody added last; accepted")
+        => expect Ui.Label(text="ada: total 0, may add; accepted")
+
+# Two requests in one tick, in the default order: dee and eve both add one when they are
+# told the total is 3. dee's is applied in that tick and its response comes in the next;
+# eve's waits a tick, is applied in the next and its response comes in the one after. Both
+# are accepted.
+test two_requests_in_one_tick, @table:
+    build
+    click Ui.Button(label="dee and eve join, eager at 3")
+    compute
+    compute
+    click Ui.Button(label="ada +2")
+    click Ui.Button(label="bob +1")
+    compute
+    compute
+        => expect Ui.Label(text="dee (eager at 3): total 4, may not add; accepted")
+    compute
+        => expect Ui.Label(text="eve (eager at 3): total 5, may not add; accepted")
+
+# Three requests in one tick, in the default order: one a tick, each accepted.
+test three_requests_in_one_tick, @table:
+    build
+    click Ui.Button(label="dee, eve and gus join, eager at 2")
+    compute
+    compute
+    click Ui.Button(label="ada +2")
+    compute
+    compute
+        => expect Ui.Label(text="dee (eager at 2): total 3, may not add; accepted")
+    compute
+        => expect Ui.Label(text="eve (eager at 2): total 4, may not add; accepted")
+    compute
+        => expect Ui.Label(text="gus (eager at 2): total 5, may not add; accepted")
+
+# Two roles request in one tick, in the default order: dee, a teller, adds one and kay, a
+# keeper, clears, both when told the total is 4. A teller's place is before a keeper's:
+# dee's makes five in that tick, kay's clears it in the next.
+test two_roles_in_one_tick, @table:
+    build
+    click Ui.Button(label="dee and kay join, eager at 4")
+    compute
+    compute
+    click Ui.Button(label="ada +2")
+    click Ui.Button(label="bob +2")
+    compute
+    compute
+        => expect Ui.Label(text="dee (eager at 4): total 5, may not add; accepted")
+        => expect Ui.Label(text="kay (eager at 4) keeps: total 5, dee added last; nothing yet")
+    compute
+        => expect Ui.Label(text="kay (eager at 4) keeps: total 0, nobody added last; accepted")
+
+# The same two requests on a tally that states its own order: both are applied in the
+# tick they are made, the keeper's first. kay clears the four, then dee adds one.
+test own_order, @keepersFirst:
+    build
+    click Ui.Button(label="dee and kay join, eager at 4")
+    compute
+    compute
+    click Ui.Button(label="ada +2")
+    click Ui.Button(label="bob +2")
+    compute
+    compute
+        => expect Ui.Label(text="dee (eager at 4): total 1, may not add; accepted")
+        => expect Ui.Label(text="kay (eager at 4) keeps: total 1, dee added last; accepted")
+
+# A participant asks and leaves in one tick: ada's last button adds one and leaves. The
+# request is applied, then the seat goes: bob is told the total is 1.
+test request_and_leave, @table:
+    build
+    compute
+    compute
+    click Ui.Button(label="ada +1 and leaves")
+    compute
+        => expect Ui.Label(text="bob: total 1, may add; nothing yet")
+
+# An eager seat asks in the tick it is told: fay adds one when told the total is 1, a tick
+# after ada's one is applied. Nobody removes fay, the request is applied, and fay is
+# shown `accepted` and the total 2. The next test gives the same inputs up to that tick.
+test unremoved_seat_request_lands, @table:
+    build
+    click Ui.Button(label="fay joins, eager at 1")
+    compute
+    compute
+    click Ui.Button(label="ada +1")
+    compute
+    compute
+        => expect Ui.Label(text="fay (eager at 1): total 2, may not add; accepted")
+    click Ui.Button(label="bob +1")
+    compute
+        => expect Ui.Label(text="bob: total 3, may not add; accepted")
+
+# The host removes a seat in the tick the seat asks: the inputs of the test above, with
+# the table's removal of fay as the input of the tick fay asks in. The seat goes first:
+# fay's request is not applied, the total stays 1, and bob's one makes 2 where the test
+# above has 3.
+test removed_seat_request_dropped, @table:
+    build
+    click Ui.Button(label="fay joins, eager at 1")
+    compute
+    compute
+    click Ui.Button(label="ada +1")
+    click Ui.Button(label="fay is removed")
+    compute
+        => expect Ui.Label(text="bob: total 1, may add; nothing yet")
+    click Ui.Button(label="bob +1")
+    compute
+        => expect Ui.Label(text="bob: total 2, may not add; accepted")
+
+# The host removes a seat whose request waits from the tick before: dee and eve both ask
+# when told the total is 3, dee's is applied in that tick and eve's waits; the table
+# removes eve in the next tick, the tick eve's request is due. A removed seat's requests
+# go with it, the ones that wait too: eve's places are torn down in that tick, her request
+# is never applied, and the total stays 4.
+test removed_seat_waiting_request, @table:
+    build
+    click Ui.Button(label="dee and eve join, eager at 3")
+    compute
+    compute
+    click Ui.Button(label="ada +2")
+    click Ui.Button(label="bob +1")
+    compute
+    click Ui.Button(label="eve is removed")
+        => expect Ui.Label(text="dee (eager at 3): total 4, may not add; accepted")
+    compute
+    compute
+
+# A seat whose sitting changes is built again, alone: bob becomes eager, and adds one by
+# itself when ada's two makes the total 2.
+test sitting_changes, @table:
+    build
+    compute
+    compute
+    click Ui.Button(label="bob becomes eager")
+    compute
+    compute
+        => expect Ui.Label(text="bob (eager at 2): total 0, may add; nothing yet")
+    click Ui.Button(label="ada +2")
+    compute
+    compute
+        => expect Ui.Label(text="bob (eager at 2): total 3, may not add; accepted")

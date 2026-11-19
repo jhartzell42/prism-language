@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 5 (a color variable is decided at each call; a bounded function is called at once): the map's one function adds 1 to 5; the function the picked function gives doubles 5.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="6 10")

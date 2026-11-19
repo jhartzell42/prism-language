@@ -1,0 +1,4 @@
+tests/checker/neg/regex-r-no-number.prism:2: error[regex]: the pattern has no group of that number
+    let r = %/(a)/$2/
+                  ^
+1 error

@@ -1,0 +1,24 @@
+# A widget applied to a `$` argument, taken as a blueprint value and applied out of an option: its place follows the dynamic
+# (Semantics ch. 8: "a blueprint builds nothing until a block applies it", at the applying
+# block's next positions; Type System ch. 2: a blueprint is an opaque handle and still a
+# value; ch. 4: a building `match`'s arm adds no path segment). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Meter: fn $Nat -> @unit
+fn @Meter $n:
+    Ui.Label($text=$"meter {$n}")
+
+@Page: fn Bool -> @unit
+fn @Page b:
+    !inc <- Ui.Button($label=$"inc")                             # 0
+    $n <- 7 then $n + 1 on !inc
+    match ?Pick b, (@Meter $n):                                  # 1
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    Ui.Label($text=$"end")                                       # 2

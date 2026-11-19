@@ -1,0 +1,5 @@
+tests/checker/neg/prompt-cycle-through-lambda-in-a-record.prism:20: error[prompt-cycle]: a prompt cycle: `!fed`, `!out`
+        let !fed = (1 on !press) <| !out
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: break it with a hold: `$last <- start then ...` reads the value as the tick opened
+1 error

@@ -1,0 +1,21 @@
+# From prism-notes, claude/04-domains-and-documents/evidence/hosting/10-hosting-per-role-state-only/tests.prism: attempt 10 of the Bible's document hosting against prismc at 10ca993, committed as written.
+# Attempt 10's test: White moves, a spectator joins, Black moves, the spectator leaves.
+emit Ui.* | Play.* | Watch.*
+use App.*
+
+test seats_come_and_go, @host:
+    build
+    click Ui.Button(label="White +1")
+    compute
+    compute
+    compute
+    click Ui.Button(label="ada joins")
+    compute
+    compute
+    click Ui.Button(label="Black +1")
+    compute
+    compute
+    compute
+    click Ui.Button(label="ada leaves")
+    compute
+    compute

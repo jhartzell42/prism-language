@@ -1,0 +1,8 @@
+# The tests of doc-c4-seat-family-indexed.
+emit Ui.*
+use App.*
+
+test one_family_two_indices, @page:
+    build
+    click at 0
+    click at 0

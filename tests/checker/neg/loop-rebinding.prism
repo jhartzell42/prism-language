@@ -1,0 +1,14 @@
+# `may-not-end`: a `while` keeps shrinking only when what it sets is smaller where it is
+# set. The condition's `left` is smaller than `&fuel`, but the arm binds its own `left`,
+# a bigger number, and sets `&fuel` to that one.
+?Grown: fn Nat -> ?Nat
+fn ?Grown n = ? n + 2
+
+Spin: fn Nat -> Nat
+fn Spin fuel = update 0:
+    let &fuel = fuel
+    while ? left <- &fuel -? 1:
+        &_ += 1
+        match ?Grown left:
+            ? left: &fuel <= left
+            nil: &fuel <= left

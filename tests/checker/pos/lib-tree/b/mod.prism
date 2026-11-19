@@ -1,0 +1,10 @@
+# `B`, the library's other module, with a test module of its own.
+emit r
+test mod Tests
+use A
+
+Dec: fn Nat -> Nat
+fn Dec n = Or (n -? 1), 0
+
+Again: fn Nat -> Nat
+fn Again n = A.Inc n

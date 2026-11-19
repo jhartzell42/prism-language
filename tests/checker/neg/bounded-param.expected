@@ -1,0 +1,5 @@
+tests/checker/neg/bounded-param.prism:10: error[calls-unbounded]: bounded `Safe` takes a bounded closure; this one is unbounded
+    fn Wild n = Safe n, \|y| Grow y
+                        ^^^^^^^^^^^
+  fix: mark the parameter `unbounded fn`, or run the work through `@Run`
+1 error

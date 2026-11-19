@@ -1,0 +1,23 @@
+# A widget that calls itself in a static position deeper than sixteen levels and hands
+# its `$` parameter down (Semantics ch. 4: "widget functions recurse as deep as their
+# data"; ch. 8: a widget application is transparent, each place the next number; ruling
+# TC). Every level's label reads the one dynamic. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Chain: fn Nat, $Nat -> @unit
+fn @Chain 0, $count:
+    Ui.Label($text=$"end: {$count}")
+fn @Chain n, $count:
+    Ui.Label($text=$"level {n}: {$count}")
+    match n -? 1:
+        ? m: @Chain m, $count
+        nil: Ui.Label($text=$"end")
+
+@main: @unit
+@main:
+    !go <- Ui.Button($label=$"go")                                # 0
+    $count <- 0 then $count + 1 on !go
+    @Chain 20, $count                                            # 1 to 21
+    Ui.Label($text=$"after")                                      # 22

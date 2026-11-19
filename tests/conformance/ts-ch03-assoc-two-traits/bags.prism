@@ -1,0 +1,6 @@
+# `^Bag` and its own `Item`, for ts-ch03-assoc-two-traits.
+emit r
+
+trait ^Bag a:
+    type Item
+    Pour: fn a -> Item a

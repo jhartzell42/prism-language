@@ -1,0 +1,5 @@
+# The book prints none for this program; written by hand from Semantics ch. 5.
+check lens_over_a_local
+1: ok
+2: ok
+3: ok

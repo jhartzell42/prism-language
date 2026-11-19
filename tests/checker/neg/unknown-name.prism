@@ -1,0 +1,3 @@
+# `unknown-name`: nothing declares the name.
+Twice: fn Int -> Int
+fn Twice n = Thrice n

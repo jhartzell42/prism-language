@@ -1,0 +1,9 @@
+# The shrink check reads a `[a]+` parameter as known non-empty, so `Drop xs, 1` is strictly
+# smaller than `xs` from the clause's first line (Semantics ch. 7, Keep shrinking; Type
+# System ch. 2, "Collections"), and a cast is the value it casts, so the `? rest` of the
+# checked cast is no larger than what was dropped from. Written by Claude on the
+# claude-bugs branch; subject to change.
+Total: fn [Nat]+ -> Nat
+fn Total xs = match ((Drop xs, 1) as [Nat]+?):
+    nil: Or xs[0], 0
+    ? rest: (Or xs[0], 0) + (Total rest)

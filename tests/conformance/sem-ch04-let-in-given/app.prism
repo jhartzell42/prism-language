@@ -1,0 +1,32 @@
+# A `let` in a `~F` or `?F` body binds a value whole: its binder's sigil states its type, as
+# `let $x = $y` binds a dynamic, so `let ~x = ~ 3` binds the `~Nat` itself and `x <- ~x`
+# then binds through it (Jimmy's ruling MS: `let` does not monad). Written by Claude on the
+# claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+~Pure: fn Nat -> ~Nat
+fn ~Pure n:
+    let ~x = ~ 3
+    y <- ~x
+    ~ (y + n)
+
+?Opt: fn Nat -> ?Nat
+fn ?Opt n:
+    let ?x = ? 3
+    y <- ?x
+    ? (y + n)
+
+~Failed: fn Nat -> ~Nat
+fn ~Failed n:
+    let ~x = Error(kind=Prelude.NotANumber, message="no {n}")
+    y <- ~x
+    ~ (y + 1)
+
+SaidN: fn ~Nat -> Text
+fn SaidN (~ n) = "{n}"
+fn SaidN (Error(message=m, ..)) = "!{m}"
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{SaidN (~Pure 1)} {Or (?Opt 2), 0} {SaidN (~Failed 7)}")    # 0

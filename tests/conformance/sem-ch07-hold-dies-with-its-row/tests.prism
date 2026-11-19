@@ -1,0 +1,18 @@
+# The tests of sem-ch07-hold-dies-with-its-row.
+emit Ui.*
+use App.*
+
+test a_kept_dynamic_of_a_row_that_left_is_its_last_value, @rows:
+    build
+    click at 1
+    click at 2
+    click at 0
+    click at 1
+
+test a_stateless_combinator_of_a_row_that_left_reads_its_live_input, @derived:
+    build
+    click at 1
+    click at 2
+    click at 0
+    click at 3
+    click at 1

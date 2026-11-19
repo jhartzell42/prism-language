@@ -1,0 +1,32 @@
+# A widget whose plain pair a tuple pattern binds, taking a building `if`'s late plain
+# result written below it, where the `if`'s arm gives what its own widget gives (Semantics
+# ch. 4, "Binding groups and cycles": any line may use any name the block binds; Type
+# System ch. 2: a tuple pattern takes a plain pair apart). Over an `if` whose arms give
+# values of their own the same lines lower (sem-ch04-late-value-above-taker-result-tuple:
+# the choice is computed in the build). Reaches `DeferredLine`'s refusal "a line that
+# takes a late result at its build, above the line that gives it, and gives a plain result
+# of its own that no name binds" on prismc-fd1.
+# Written by Claude (sweep-7, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Pair: fn Nat -> @((Nat, Nat))
+fn @Pair k:
+    Ui.Label($text=$"pair {k}")
+    @ ((k, k + 1))
+
+@Seven: @Nat
+@Seven:
+    Ui.Label($text=$"seven")
+    @ 7
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    ((a, b)) <- @Pair n                                                # 0
+    Ui.Label($text=$"{a} {b}")                                        # 1
+    n <- if loud:
+        k <- @Seven                                                    # 2
+        @ k
+    else:
+        @ 20

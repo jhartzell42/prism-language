@@ -1,0 +1,20 @@
+# Derived by hand from Semantics Appendix B (`@Later`: each firing answered one tick later, through a zero-delay `Time.After`; a World implements time) with the transcript form of sem-ch02-durations for `Time.After`: the click requests a wake of no delay at `@Later`'s place, and the World's answer in the next tick fires the event. The wake's `context` is taken to be the empty text: the book does not say.
+test a_firing_comes_back_a_tick_later
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Time.After
+    2: Ui.Label(text="later 0")
+
+tick 1
+  in:
+    0: click
+  requested:
+    1: Wake(after=0s, context="")
+
+tick 2
+  in:
+    1: Wake(after=0s, context="")
+  changed:
+    2: Ui.Label(text="later 1")

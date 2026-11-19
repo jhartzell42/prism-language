@@ -1,0 +1,13 @@
+# The tests of sem-ch09-host-late-value-above-below-building-if.
+emit Ui.*
+use App.*
+
+test loud, @Page LoudAfterLabel:
+    build
+    click Ui.Button(label="add")
+
+test soft, @Page SoftAfterLabel:
+    build
+
+test loud_nothing_before, @Page LoudAlone:
+    build

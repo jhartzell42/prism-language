@@ -1,0 +1,26 @@
+# A local `let` of a call's result, a function of the callee's own color, in an unbounded
+# function's body, where no use bounds the color from above (Type System ch. 5: "A local
+# `let` generalizes over the variables not free in Γ"; The color: "At a call, each
+# parameter's variable is its closure argument's color", so `Maker Inc` is a bounded
+# function, and a color no use decides defaults to bounded). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Maker: u fn (u fn Nat -> Nat) -> (u fn Nat -> Nat)
+fn Maker F = \|n| (F n) + 2
+
+Inc: fn Nat -> Nat
+fn Inc n = n + 1
+
+Through: unbounded fn Nat -> Nat
+fn Through k:
+    let Make = Maker Inc
+    Make k
+
+@page: @unit
+@page:
+    !done <- @Run Through, 5                              # 0
+    $shown <- "working" then "{!done}"
+    Ui.Label($text=$shown)                                       # 1

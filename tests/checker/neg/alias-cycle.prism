@@ -1,0 +1,8 @@
+# An alias is the type it names, so aliases that name each other in a ring name no type
+# (Semantics ch. 6: `type Name = ...` is "a record, a choice, a newtype, a unit type, an
+# alias"). Written by Claude on the claude-bugs branch; subject to change.
+type Alias = Other
+type Other = [Alias]
+
+Use: fn Alias -> Nat
+fn Use a = 0

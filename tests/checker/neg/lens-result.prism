@@ -1,0 +1,13 @@
+# `lens-result`: a function named with `&` is a lens, "a function from one reference to
+# a reference" (Type System ch. 3, "Lenses"), so its result is a reference.
+# Written by Claude on the claude-lowering branch; subject to change.
+type Regs = record:
+    acc: Int
+    x: Int
+
+type Vm = record:
+    pc: Nat
+    regs: Regs
+
+&Acc: fn &Vm -> Int
+fn &Acc &vm = &vm.regs.acc

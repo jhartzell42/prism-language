@@ -1,0 +1,6 @@
+# Derived by hand: `Box 2, 3` is a `Box`, which `Box(..)` matches; `Dot` is not.
+test the_rest_pattern_matches_the_case
+
+tick 0
+  added:
+    0: Ui.Label(text="True False")

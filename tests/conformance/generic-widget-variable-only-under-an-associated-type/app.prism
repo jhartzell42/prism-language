@@ -1,0 +1,37 @@
+# A generic widget whose parameter's type mentions an associated type, `Key d r`, and a
+# variable, `a`, that stands only under it: the checker solves both at the call
+# (`@Counted<<Count>> Fixed<<Raiser>>, ..`), and the widget is applied at what it solved.
+# Prompted by the documents programs, where prismc refused `@HostRole` ("nothing at the
+# call decides `r`, `a`"); no documents library involved.
+# Written by Claude, 15 November 2026, on the claude-self-hosting branch. Subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type Key (r: Role d)
+
+type CountRole = choice:
+    Raiser
+    Watcher
+derive ^Eq, ^Debug
+
+type Count = record:
+    total: Nat
+
+impl ^Document Count:
+    type Role = CountRole
+    type Key Raiser = Nat
+    type Key Watcher = Text
+
+@Counted: forall d (r: Role d). fn Fixed r, $(Key d r ==> $@(@a emit Ui.*)) -> @unit emit Ui.* where d: ^Document
+fn @Counted role, $guests:
+    Ui.Label($text=$"{Size $guests} guests")                            # 0
+
+@Shown: fn Nat -> @unit emit Ui.*
+fn @Shown n:
+    Ui.Label($text=$"guest {n}")
+
+@page: @unit
+@page:
+    @Counted<<Count>> Fixed<<Raiser>>, $ {{1: $ (@Shown 1), 2: $ (@Shown 2)}}    # 0

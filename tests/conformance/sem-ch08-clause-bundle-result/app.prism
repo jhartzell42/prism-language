@@ -1,0 +1,26 @@
+# A widget of several clauses whose clauses end on a bundle (Semantics ch. 8: `<-` with a
+# blueprint builds the child and binds its result, and "the left side is a pattern for the
+# output, with the output's whole stack ... a tuple pattern for a tuple"; Type System
+# ch. 2, "Bundles"): the clause the plain argument chooses gives its button's clicks and
+# its count, taken apart where the caller binds them. Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Pad: fn Bool -> @((!Click, $Nat))
+fn @Pad True:
+    !go <- Ui.Button($label=$"up")                                # 0
+    $n <- 0 then $n + 1 on !go
+    @ ((!go, $n))
+fn @Pad False:
+    Ui.Label($text=$"by tens")                                    # 0
+    !go <- Ui.Button($label=$"ten")                               # 1
+    $n <- 10 then $n + 10 on !go
+    @ ((!go, $n))
+
+@Page: fn Bool -> @unit
+fn @Page ones:
+    ((!hit, $count)) <- @Pad ones                                # 0, or 0 and 1
+    $hits <- 0 then $hits + 1 on !hit
+    Ui.Label($text=$"{$hits} hits, count {$count}")               # 1, or 2

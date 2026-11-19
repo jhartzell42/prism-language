@@ -1,0 +1,4 @@
+tests/checker/neg/ignore-binds-a-function.prism:16: error[mismatch]: `<-` binds a blueprint or an element; this is `fn Nat -> @unit`
+        ignore <- @Row
+                  ^^^^
+1 error

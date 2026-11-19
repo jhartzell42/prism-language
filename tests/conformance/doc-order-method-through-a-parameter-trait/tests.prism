@@ -1,0 +1,6 @@
+# The tests of doc-order-method-through-a-parameter-trait.
+emit Ui.*
+use App.*
+
+test each_order_by_its_parameter, @page:
+    build

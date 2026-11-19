@@ -1,0 +1,7 @@
+# The tests of sem-ch08-widget-parameter-applied.
+emit Ui.*
+use App.*
+
+test a_parameter_applied_twice, @main:
+    build
+        => expect Ui.Label(text="row 2")

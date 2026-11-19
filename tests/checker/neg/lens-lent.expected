@@ -1,0 +1,9 @@
+tests/checker/neg/lens-lent.prism:22: error[borrow-overlap]: `&_` is lent to the `for`
+            &_.score.home += 1
+            ^^^^^^^^^^^^^
+  fix: set it after the loop, or loop over a copy
+tests/checker/neg/lens-lent.prism:26: error[borrow-overlap]: `&_.stoppage` is lent to the `for`
+            &Stoppage &_ <= [[]]
+            ^^^^^^^^^^^^
+  fix: set it after the loop, or loop over a copy
+2 errors

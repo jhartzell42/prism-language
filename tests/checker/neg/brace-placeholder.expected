@@ -1,0 +1,17 @@
+tests/checker/neg/brace-placeholder.prism:8: error[brace-placeholder]: a code template's placeholder is `<<expr>>`, and braces are text
+    pub struct {{head}} {
+               ^^^^^^^^
+  fix: write `<<head>>`
+tests/checker/neg/brace-placeholder.prism:9: error[brace-placeholder]: a code template's placeholder is `<<expr>>`, and braces are text
+        {{fields}}
+        ^^^^^^^^^^
+  fix: write `<<fields>>`
+tests/checker/neg/brace-placeholder.prism:11: error[brace-placeholder]: a code template's brace block runs from `<<` alone on a line to `>>` alone on a line, and braces are text
+    {{
+    ^^
+  fix: write `<<` here and `>>` in place of its closing `}}`
+tests/checker/neg/brace-placeholder.prism:15: error[brace-placeholder]: `\{{` is no escape in a code template, where braces are text
+    let s = "\{{";
+             ^^^
+  fix: write `{{`
+4 errors

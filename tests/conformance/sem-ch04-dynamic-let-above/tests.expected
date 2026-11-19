@@ -1,0 +1,14 @@
+# Derived by hand from Semantics ch. 4 and 8: the door's first value is asked with `$greet` at the build, "hi 1" from the count's initial value; the places are the door and the button, in page order; the click makes the count 2, so the door's name is "hi 2".
+test a_dynamic_let_read_above
+
+tick 0
+  added:
+    0: Pad.Door(name="hi 1")
+    1: Ui.Button(label="bump")
+  result: "door"
+
+tick 1
+  in:
+    1: click
+  changed:
+    0: Pad.Door(name="hi 2")

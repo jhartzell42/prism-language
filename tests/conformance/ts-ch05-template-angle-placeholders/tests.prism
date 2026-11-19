@@ -1,0 +1,7 @@
+# The tests of ts-ch05-template-angle-placeholders.
+emit Ui.*
+use App.*
+
+check the_template_text:
+    Code "Nat", 3 => "let v: Vec<Vec<Nat>> = Job<Nat>::new(3, 2); a>>b << \"a\\b\\n\"\n[6]"
+# Derived by hand from Interfaces ch. 1, "Code templates" (the newline after an opening tag that ends its line is not text; `<<` and `>>` alone on their lines leave no line; a brace block's value is placed where it stands) and Jimmy's ruling of 12 November (`<<x>>` placeholders, `\<` a `<`, `\\` a backslash, `>>` text outside a placeholder): `\<<` is a `<` and then a `<` that opens nothing, and `\n` stays a backslash and an `n`.

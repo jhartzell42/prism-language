@@ -1,0 +1,17 @@
+tests/checker/neg/refutable-binder.prism:11: error[not-exhaustive]: this pattern misses `nil`, and a lambda parameter takes a pattern that always matches
+    fn First xs = Fold xs, 0, \|acc, (? first)| acc + first
+                                     ^^^^^^^^^
+  fix: bind a name and `match` on it
+tests/checker/neg/refutable-binder.prism:21: error[not-exhaustive]: this pattern misses `nil`, and a `let` takes a pattern that always matches
+        let (? three) = ?maybe
+            ^^^^^^^^^
+  fix: bind a name and `match` on it
+tests/checker/neg/refutable-binder.prism:22: error[not-exhaustive]: this pattern misses `nil`, and a `for` binder takes a pattern that always matches
+        for (? each) <- [[(? 1), nil]]:
+            ^^^^^^^^
+  fix: bind a name and `match` on it
+tests/checker/neg/refutable-binder.prism:24: error[not-exhaustive]: this pattern misses `((_, nil))`, and `<-` takes a pattern that always matches
+        ((w, (? t))) <- @Measure 3
+        ^^^^^^^^^^^^
+  fix: bind a name and `match` on it
+4 errors

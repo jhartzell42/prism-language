@@ -1,0 +1,46 @@
+# A blueprint value taken out of an optional by `Or` and applied in an arm of a building
+# `if` whose late plain result a widget of several clauses above takes, the arm ending on
+# a building `if` of its own (Semantics ch. 8: applying a blueprint value builds it; ch. 4:
+# the order of a group's lines decides positions and nothing else; ruling TC: places are
+# counted as they are built). The taker counts its places as built, so the outer `if`'s
+# rows are numbered late; the arm builds its own generations at its build. Reaches
+# `ArmRowOf`'s refusal "a generation whose rows take their numbers as they are built (a
+# blueprint value applied) in an arm ... numbered after it" on prismc-f9.
+# Written by Claude (fin-f, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@One: @unit
+@One:
+    Ui.Label($text=$"one")
+
+@Two: @unit
+@Two:
+    Ui.Label($text=$"two")
+    Ui.Label($text=$"three")
+
+?Chosen: fn Bool -> ?@unit
+fn ?Chosen b = if b: ? @One else: ? @Two
+
+@Wide: fn Nat -> @unit
+fn @Wide 0:
+    Ui.Label($text=$"none")
+fn @Wide k:
+    Ui.Label($text=$"one {k}")
+    Ui.Label($text=$"two {k}")
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    @Wide n                                                            # 0 and 1
+    n <- if loud:
+        let @w = Or (?Chosen loud), @One
+        @w                                                             # 2
+        m <- if True:
+            Ui.Label($text=$"inner")                                   # 3
+            @ 3
+        else:
+            @ 4
+        @ m
+    else:
+        @ 20

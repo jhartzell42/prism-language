@@ -1,0 +1,18 @@
+# A dynamic field of a record handed to a widget's dynamic parameter, `@Show box.$n`: the
+# parameter starts at the field's value. Prompted by doc-seats-record-of-rows, where rustc
+# refused the lowered start (a `Dynamic` where its value is wanted, ruling CR).
+# Written by Claude, 15 November 2026, on the claude-self-hosting branch. Subject to change.
+emit Ui.*
+test mod Tests
+
+type Box = record:
+    $n: Nat
+
+@Show: fn $Nat -> @unit emit Ui.*
+fn @Show $n:
+    Ui.Label($text=$"n is {$n}")                                       # 0
+
+@page: @unit
+@page:
+    let box = Box($n=$ 3)
+    @Show box.$n                                                         # 0

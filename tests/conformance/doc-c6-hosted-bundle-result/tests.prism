@@ -1,0 +1,8 @@
+# The tests of doc-c6-hosted-bundle-result.
+emit Ui.*
+use App.*
+
+test both_parts_read, @page:
+    build
+    click Ui.Button(label="inc")
+    click Ui.Button(label="inc")

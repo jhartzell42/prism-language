@@ -1,0 +1,6 @@
+# Derived by hand from Part III ch. 6 (each clause is taken at its role, its seat id and request of that role's types): black's move from 12 to 28.
+test a_players_step
+
+tick 0
+  added:
+    0: Ui.Label(text="black moves 12 to 28 after 2")

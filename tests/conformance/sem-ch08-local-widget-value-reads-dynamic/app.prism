@@ -1,0 +1,22 @@
+# A widget defined in a block, read as a blueprint value, whose place reads a dynamic of
+# the block: the place follows the dynamic (Semantics ch. 8: a blueprint builds nothing
+# until a block applies it; a `$` field is live, so the place changes in place; Type
+# System ch. 2: a blueprint is still a value). Written by Claude on the claude-lowering
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@page: @unit
+@page:
+    !inc <- Ui.Button($label=$"inc")                             # 0
+    $n <- 7 then $n + 1 on !inc
+    @line:
+        Ui.Label($text=$"line {$n}")
+    match ?Pick True, @line:                                     # 1
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    Ui.Label($text=$"end")                                       # 2

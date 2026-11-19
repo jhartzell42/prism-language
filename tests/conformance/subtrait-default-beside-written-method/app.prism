@@ -1,0 +1,29 @@
+# A sub-trait's default for a method above, alone: no impl here is a header alone (the
+# EI test is subtrait-default-for-method-above). `^Named` signs `Name` and `Kind`;
+# `^Titled`, below it, gives `Name` a default; `Book`'s `^Named` impl writes `Kind` and
+# takes `Name` from `^Titled` (Jimmy, 13 November, ruling SD: "subtrait defaults are IN").
+# Expected transcript derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Named a:
+    Name: fn a -> Text
+    Kind: fn a -> Text
+
+trait ^Titled a where a: ^Named:
+    Title: fn a -> Text
+    fn Name x = "titled {Title x}"
+
+type Book = record:
+    title: Text
+
+impl ^Named Book:
+    fn Kind book = "book"
+
+impl ^Titled Book:
+    fn Title book = book.title
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Kind Book(title="Dune")}: {Name Book(title="Dune")}")    # 0

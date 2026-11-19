@@ -1,0 +1,8 @@
+# One write of the same value: declarations of the program beside it.
+emit Ui.*
+use App.*
+use Ui.*
+
+test one_write, @rows:
+    build
+    click at 0

@@ -1,0 +1,209 @@
+# `Syntax.Parser.Blocks`, a child module of `Syntax.Parser`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Syntax.Parser.*
+use Syntax.Parser.Decls.*
+use Syntax.Parser.Expr.*
+use Syntax.Parser.Types.*
+use Syntax.Parser.TestLanguage.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Syntax.Sexp.*
+
+# ---------------------------------------------------------------------------------------
+# Blocks and statements
+# ---------------------------------------------------------------------------------------
+
+# `:` and then either an indented block (rule 2) or an inline one (rule 5): "one statement,
+# or several separated by `;`, ending at an `else`, at the end of the line, or at the close
+# of an enclosing bracket."
+ParseBlockAfterColon: unbounded fn Ps -> ((Block, Ps))
+fn ParseBlockAfterColon p0:
+    let p = ExpectColon p0
+    if AtOpenL p: ParseIndentedBlock p
+    else: if AtStmtBoundary p: ((noBlock, (ErrorHere p, "expected a statement after `:`")))
+    else:
+        let start = Here p
+        let ((first, p1)) = ParseStmt p
+        let r = update (([[first]], p1)):
+            let &stmts = [[first]]
+            let &q = p1
+            while (Kind &q) == KSemi and not &q.bad:
+                let ((st, q2)) = ParseStmt (Adv &q)
+                &stmts <= Push &stmts, st
+                &q <= q2
+            &_ <= ((&stmts, &q))
+        let ((stmts, q)) = r
+        ((Block(stmts=stmts, inline=True, span=(To start, (Prev q))), q))
+
+# `open` statements separated by `sep`, then `close`.
+ParseIndentedBlock: unbounded fn Ps -> ((Block, Ps))
+fn ParseIndentedBlock p0:
+    let start = Here p0
+    let ((stmts, q)) = StmtsUntil (Adv p0), True
+    ((Block(stmts=stmts, inline=False, span=(To start, (Prev q))), q))
+
+# A brace block's statements: a stream of its own with its own layout, ending at its end
+# of input.
+ParseBlockUntilEof: unbounded fn Ps, Range -> ((Block, Ps))
+fn ParseBlockUntilEof p, span:
+    let ((stmts, q)) = if AtEof p: (([[]], p)) else: StmtsUntil p, False
+    ((Block(stmts=stmts, inline=False, span=span), q))
+
+# Statements, recovering at each; an indented block ends at its `close`, a brace block at
+# the end of its input.
+StmtsUntil: unbounded fn Ps, Bool -> (([Stmt], Ps))
+fn StmtsUntil p0, indented = update (([[]], p0)):
+    let &stmts = [[]]
+    let &p = p0
+    let &going = True
+    while &going:
+        let ((st, q)) = ParseStmt &p
+        if not q.bad:
+            &stmts <= Push &stmts, st
+        &p <= Recovered q
+        match Kind &p:
+            KLaySep:
+                &p <= Adv &p
+                if not indented and (AtEof &p):
+                    &going <= False
+            KLayClose:
+                &p <= Adv &p
+                if indented or (AtEof &p):
+                    &going <= False
+            KEof: &going <= False
+            otherwise: &p <= Recover (Complain &p, "expected the end of the statement")
+    &_ <= ((&stmts, &p))
+
+# One statement (Appendix A.6, `stmt` and `ustmt`).
+ParseStmt: unbounded fn Ps -> ((Stmt, Ps))
+fn ParseStmt p:
+    let start = Here p
+    let ((kind, q)) = StmtKindOf p, start
+    ((Stmt(kind=kind, span=(To start, (Prev q))), q))
+
+StmtKindOf: unbounded fn Ps, Range -> ((StmtKind, Ps))
+fn StmtKindOf p, start = match Kind p:
+    KKw "emit", "":
+        let ((r, q)) = ParseRow (Adv p)
+        ((SEmit r, q))
+    KKw "let", "":
+        let ((pattern, p1)) = ParsePattern (Adv p), False
+        let ((?ty, p2)) = OptionalAnnotation p1
+        let ((value, p3)) = ParseRhsExpr (ExpectOp p2, "=")
+        (((SLet pattern, ?ty, value), p3))
+    KKw "fn", "":
+        let ((f, q)) = ParseFnClause p
+        ((SFn f, q))
+    KKw "ignore", "" if (AtOp (Adv p), "<-"):
+        let ((e, q)) = ParseRhsExpr (Adv (Adv p))
+        ((SIgnore e, q))
+    # A guard takes no second argument (decisions.md D15): its condition is a whole
+    # expression, so `require Clear g, from, corner` gives every comma to `Clear`.
+    KKw w, "" if w == "require" or w == "forbid":
+        let ((c, p1)) = ParseRhsExpr (Adv p)
+        let q = if AtComma p1: ErrorAt p1, (Here p1), "`{w}` takes its condition alone, with no error value after a comma (decisions.md D15): a failed guard under `~` raises `Prelude.Unmet` (D11), and a comma after a guard belongs to a call at the head of its condition, as in `require Clear g, from, corner`" else: p1
+        if w == "require": ((SRequire c, q)) else: ((SForbid c, q))
+    KKw "while", "":
+        let ((cond, p1)) = ParseCond (Adv p), True
+        let ((body, q)) = ParseBlockAfterColon p1
+        (((SWhile cond, body), q))
+    KKw "return", "":
+        let p1 = OutOfScope (Adv p), (Here p), "`T monad:` blocks and `^Monad`", "`return` ends a monad block, which is out of this compiler"
+        let ((e, q)) = ParseRhsExpr p1
+        ((SReturn e, q))
+    # A signature line, or `@name:` and a block.
+    KName ignore if (KindAt p, 1) == KColon:
+        if (KindAt p, 2) == KLayOpen:
+            let ((name, p1)) = ParseSName p
+            let ((body, q)) = ParseBlockAfterColon p1
+            ((SWidget WidgetDecl(name=name, body=body, span=(To start, body.span)), q))
+        else:
+            let ((sig, q)) = ParseSignature p
+            ((SSignature sig, q))
+    otherwise: OtherStmt p
+
+# An update statement, a bind or hold, or an expression, tried in that order.
+OtherStmt: unbounded fn Ps -> ((StmtKind, Ps))
+fn OtherStmt p:
+    let ((upd, u)) = ParseUpdateStmt p
+    let ((pattern, b)) = ParsePattern p, True
+    if not u.bad: ((upd, u))
+    else: if not b.bad and (AtOp b, "<-"):
+        let ((value, p1)) = ParseRhsExpr (Adv b)
+        let ((?thenStep, p2)) = if AtKw p1, "then": OptionalRhs (Adv p1) else: ((nil, p1))
+        if AtKw p2, "then": ((SExpr noExpr, (ErrorAt p2, (Here p2), "`then` does not associate: a hold has one start and one step")))
+        else: (((SBind pattern, value, ?thenStep), p2))
+    else:
+        let ((e, p1)) = ParseRhsExpr p
+        if AtOp p1, "<-": ((SExpr e, (ErrorAt p1, (Here p1), "the left side of `<-` is not a pattern")))
+        else: if AtKw p1, "then": ((SExpr e, (ErrorAt p1, (Here p1), "`then` belongs to a hold: `$x <- start then step`")))
+        else: ((SExpr e, p1))
+
+OptionalRhs: unbounded fn Ps -> ((?Expr, Ps))
+fn OptionalRhs p:
+    let ((e, q)) = ParseRhsExpr p
+    ((? e, q))
+
+# `&r <= e`, `&r <: e` and `&r += e`: a reference at the head of a statement, then a
+# setting, putting or accumulating operator ("`<=` is one token with two meanings, decided
+# by statement position"). `<:` puts a map entry (Jimmy's ruling on map entries).
+ParseUpdateStmt: unbounded fn Ps -> ((StmtKind, Ps))
+fn ParseUpdateStmt p:
+    let ((target, p1)) = ParseReference p
+    let op = match Kind p1:
+        KOp o, ignore: o
+        otherwise: ""
+    if p1.bad or not (op == "<=" or op == "<:" or op == "+=" or op == "-=" or op == "*=" or op == "/="): ((SExpr noExpr, (Fail p1)))
+    else:
+        let ((value, q)) = ParseRhsExpr (Adv p1)
+        if op == "<=": (((SSet target, value), q))
+        else: if op == "<:": (((SPut target, value), q))
+        else: (((SAccum target, op, value), q))
+
+# `ref ::= "&_" lens* | "&" lname lens* | "&" uname ref` (Appendix A.6).
+ParseReference: unbounded fn Ps -> ((Expr, Ps))
+fn ParseReference p = match Kind p:
+    KName n if (HasPrefix n.sigils, "&"):
+        let start = Here p
+        let ((name, p1)) = ParseSName p
+        if IsUpperName name:
+            # A named lens applied, `&Acc &_`: a reference, as its argument is.
+            let ((inner, q)) = ParseReference p1
+            let callee = Expr(kind=(EName name), span=start)
+            ((Expr(kind=(ECall callee, [[Arg(marks="", ?name=nil, value=inner, span=inner.span)]], False, False), span=(To start, inner.span)), q))
+        else: LensSteps (Expr(kind=(EName name), span=name.span)), p1
+    otherwise: ((noExpr, (Fail p)))
+
+LensSteps: unbounded fn Expr, Ps -> ((Expr, Ps))
+fn LensSteps e0, p0 = update ((e0, p0)):
+    let &e = e0
+    let &p = p0
+    let &going = True
+    while &going and not &p.bad:
+        match Kind &p:
+            KDot False:
+                let p1 = Adv &p
+                let t = Here p1
+                match Kind p1:
+                    KName f if f.sigils == "" and f.case == CaseLower:
+                        &e <= Expr(kind=(EField &e, "", Ident(name=(Or f.path[0], ""), span=t)), span=(To &e.span, t))
+                        &p <= Adv p1
+                    KKw "key", ignore:
+                        &e <= Expr(kind=(EField &e, "", Ident(name="key", span=t)), span=(To &e.span, t))
+                        &p <= Adv p1
+                    otherwise: &p <= Fail p1
+            KOpen "[", False if (Tk &p).touches:
+                let ((index, p1)) = ParseExpr (Adv &p)
+                let p2 = ExpectClose p1, "["
+                &e <= Expr(kind=(EIndex &e, index), span=(To &e.span, (Prev p2)))
+                &p <= p2
+            otherwise: &going <= False
+    &_ <= ((&e, &p))

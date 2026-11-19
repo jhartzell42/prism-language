@@ -1,0 +1,5 @@
+tests/checker/neg/reference-stored.prism:7: error[reference-stored]: the field `&slot` would store a reference, and no reference outlives its `update` block
+        &slot: Int
+        ^^^^^^^^^^
+  fix: store the value, `slot: Int`
+1 error

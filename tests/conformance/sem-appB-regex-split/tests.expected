@@ -1,0 +1,14 @@
+# Derived by hand from Semantics Appendix B, `Split`: the pieces between the matches the iteration rule finds, so `k` matches give `k + 1` texts and empty ones are kept ("a,,b" is three, "" is one empty text, a separator at either end gives an empty text there); the empty pattern matches at every character boundary, so it cuts "abc" into its characters with an empty text at each end, and "" into two empty texts.
+check split
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok
+9: ok
+10: ok
+11: ok
+12: ok

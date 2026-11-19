@@ -1,0 +1,5 @@
+# A directory with no app.prism, lib.prism or mod.prism: no longer every file under it.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+Loose: fn Nat -> Nat
+fn Loose n = n

@@ -1,0 +1,10 @@
+# The tests of ts-ch04-gate-in-plain-function.
+emit Ui.*
+use App.*
+use Ui.*
+
+test t, @page:
+    build
+    click at 0
+    click at 1
+    click at 0

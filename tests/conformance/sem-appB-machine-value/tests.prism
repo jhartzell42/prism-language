@@ -1,0 +1,11 @@
+# The function-valued step's tests: declarations of sem-appB-machine-value.
+emit Ui.*
+use App.*
+
+test a_lambda_steps, @Over 3:
+    build
+        => expect Ui.Label(text="no")
+    click at 0
+        => expect Ui.Label(text="no")
+    click at 0
+        => expect Ui.Label(text="past 4")

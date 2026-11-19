@@ -1,0 +1,4 @@
+# A child module with both its files: refused (mod-both). `mod Shapes` is shapes.prism, or
+# shapes/mod.prism when it has children; never both.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+mod Shapes

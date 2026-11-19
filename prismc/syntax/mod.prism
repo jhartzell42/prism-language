@@ -1,0 +1,407 @@
+# The tree of Prism, as `prismc` builds it, and its S-expression dump (sexp.prism).
+# Semantics Appendix A.6 form by form, Templates ch. 2's templates, Conformance Appendix A's
+# tests. Every node has a `Range`.
+#
+# Written by Claude, 31 October 2026, on the claude-self-hosting branch. Subject to change:
+# Jimmy rewrites it by hand, and an implementer reading it uses their own discretion.
+#
+# The spellings that differ from ast.rs, each for a reason:
+# a sigil stack is the text of its sigils, outermost first (`"@$?"`); an operator, a
+# keyword, a bound name and an accumulation are the text of their spelling; a choice's
+# constructors carry a prefix of their type (`EName`, `PName`, `TName`), since Prism's
+# constructors share one namespace per module; and a `Range` is the prelude's `Span` under a
+# name the prelude does not take.
+emit r
+mod Decls
+mod Lexer
+mod Parser
+mod Sexp
+use Syntax.Decls.*
+
+# ---------------------------------------------------------------------------------------
+# Positions and diagnostics
+# ---------------------------------------------------------------------------------------
+
+# A half-open range `[start, end)` of character offsets into one source text (ast.rs counts
+# bytes; lines and columns, which are all a diagnostic shows, come out the same), or into
+# the space of what made it, where prismc makes an expression no source has (`Origin`).
+type Range = record:
+    start: Nat
+    end: Nat
+    origin: Origin
+derive ^Eq, ^Debug
+
+# Where a span's offsets count: in its file's source text, or in a space of their own,
+# from 0, for what prismc made where nothing is written (so a made span never meets a
+# written one, and its type says it was made).
+type Origin = choice:
+    InSource
+    MadeBy Making
+derive ^Eq, ^Debug
+
+# What made an expression no source has.
+type Making = choice:
+    # the line that applies a root widget whose body is not one block, and its names
+    # (`RootApplicationItems`)
+    RootApplication
+    # the arguments of a constructor used as a function value (`CtorFn`)
+    ConstructorArguments
+derive ^Eq, ^Debug
+
+# A lexical error, a parse error, or an out-of-scope feature:
+# `stage` is `"lex"`, `"parse"` or `"out"`; `feature` names an out-of-scope feature as
+# decisions.md's list spells it.
+type Diag = record:
+    stage: Text
+    span: Range
+    message: Text
+    ?feature: Text
+derive ^Eq, ^Debug
+
+# ---------------------------------------------------------------------------------------
+# Names
+# ---------------------------------------------------------------------------------------
+
+# A name as written: attached sigils, outermost first, then a possibly qualified name.
+type SName = record:
+    sigils: Text
+    path: [Text]
+    span: Range
+derive ^Eq, ^Debug
+
+# A plain lowercase identifier: a field, a named argument, a type variable.
+type Ident = record:
+    name: Text
+    span: Range
+derive ^Eq, ^Debug
+
+# A trait reference, `^Ord`.
+type TraitRef = record:
+    path: [Text]
+    span: Range
+derive ^Eq, ^Debug
+
+type QualName = record:
+    path: [Text]
+    span: Range
+derive ^Eq, ^Debug
+
+# ---------------------------------------------------------------------------------------
+# The file
+# ---------------------------------------------------------------------------------------
+
+type Module = record:
+    ?name: QualName
+    ?emitRow: Row
+    mods: [ModLine]
+    uses: [Use]
+    decls: [Decl]
+    ?template: Template
+    span: Range
+derive ^Eq, ^Debug
+
+# `mod Name` (a child module, `name.prism` beside the declaring file or `name/mod.prism`)
+# or `test mod Name` (a child test module): a file's header says what its module's
+# children are (claude/modules-style-pass.md).
+type ModLine = record:
+    name: Ident
+    isTest: Bool
+    span: Range
+derive ^Eq, ^Debug
+
+# `use Birds` or `use Birds.*`.
+type Use = record:
+    target: QualName
+    star: Bool
+    # `use Fish.Count as FishCount`: the name the target is reached by here (ruling UA)
+    ?alias: Ident
+    span: Range
+derive ^Eq, ^Debug
+
+# Families joined by `|`.
+type Row = record:
+    terms: [RowTerm]
+    span: Range
+derive ^Eq, ^Debug
+
+type RowTerm = choice:
+    RFamily QualName
+    RType Type
+    RVar Ident
+derive ^Eq, ^Debug
+
+# ---------------------------------------------------------------------------------------
+# Types
+# ---------------------------------------------------------------------------------------
+
+type Type = record:
+    kind: TypeKind
+    span: Range
+derive ^Eq, ^Debug
+
+type TypeKind = choice:
+    TName SName, [Type]
+    TSigiled Text, Type
+    TArray Type, Bool
+    TTuple [Type]
+    TGroup Type
+    TMap Type, Type
+    # a function type: its color, its parameters, its result, and for each parameter
+    # whether it is written `prompt` (ruling PT)
+    TFn Color, [Type], Type, [Bool]
+    TEmit Type, Type
+    TRowUnion [Type]
+    # `Seat.* Count Raiser`: a family and the indices it is applied to (Jimmy's ruling AF)
+    TFamily QualName, [Type]
+    TAny TraitRef
+    # `forall a (r: Access). t` (Jimmy's ruling FA): the variables, the kinds some state,
+    # the type they quantify
+    TForall [Ident], [((Text, Type))], Type
+    # `any r: t where ...`, an existential over type variables (Type System ch. 3,
+    # "Existentials"; Jimmy's ruling FA): the variables, their stated kinds, the type, the
+    # bounds
+    TExists [Ident], [((Text, Type))], Type, [Bound]
+    TUnit Text
+    THole SName
+    TAbsent
+    TNonEmpty Type
+derive ^Eq, ^Debug
+
+# A function type's color: no word, `unbounded`, or a color variable.
+type Color = choice:
+    Bounded
+    Unbounded
+    ColorVar Ident
+derive ^Eq, ^Debug
+
+# ---------------------------------------------------------------------------------------
+# Patterns
+# ---------------------------------------------------------------------------------------
+
+type Pattern = record:
+    kind: PatternKind
+    span: Range
+derive ^Eq, ^Debug
+
+type PatternKind = choice:
+    PName SName
+    PIgnore
+    PLit Literal
+    PNeg Literal
+    PUnit
+    PNil
+    PCtor SName, [Pattern]
+    PRecord SName, [FieldPat], Bool
+    PSigil Text, Pattern
+    PTuple [Pattern]
+    PArray [Pattern]
+    PGroup Pattern
+    PFamily QualName
+    # `any p`, an existential opened (Type System ch. 3): its hidden types fresh in the arm
+    PAny Pattern
+    # `Fixed<<Raiser>>`, a value written with its type (Jimmy's ruling VO)
+    PTypeArgs SName, [Type]
+derive ^Eq, ^Debug
+
+# `marks` are the sigils written on the field's name (`$label=ignore`), "" for a plain name.
+type FieldPat = record:
+    marks: Text
+    ?name: Ident
+    pattern: Pattern
+    span: Range
+derive ^Eq, ^Debug
+
+# ---------------------------------------------------------------------------------------
+# Literals
+# ---------------------------------------------------------------------------------------
+
+type Literal = record:
+    marks: Text
+    kind: LitKind
+    span: Range
+derive ^Eq, ^Debug
+
+# A character is a one-character `Text`.
+type LitKind = choice:
+    LInt Text
+    LFloat Text
+    LDuration Text, Text
+    LChar Text
+    LText [TextSeg]
+    LRegex RegexLit
+derive ^Eq, ^Debug
+
+# A regular-expression literal (Semantics ch. 2, Regular expressions): its pattern and,
+# for a `RegexReplacement`, its replacement, each as written between its delimiters, and
+# its flags; each with the byte offset in the source where it begins, so that a
+# diagnostic of the dialect (claude/regex-dialect.md) points at its character.
+type RegexLit = record:
+    pattern: Text
+    patternAt: Nat
+    ?replacement: Text
+    replacementAt: Nat
+    flags: Text
+    flagsAt: Nat
+derive ^Eq, ^Debug
+
+type TextSeg = choice:
+    SegPlain Text
+    SegPlaceholder Expr
+derive ^Eq, ^Debug
+
+# ---------------------------------------------------------------------------------------
+# Expressions
+# ---------------------------------------------------------------------------------------
+
+type Expr = record:
+    kind: ExprKind
+    span: Range
+derive ^Eq, ^Debug
+
+# A binary operator is its spelling (`"<|"`, `"on"`, `"-?"`, `"mod"`); a unary one is
+# `"not"`, `"neg"` or `"pos"`; a bound name `"key"`, `"ix"`, `"jx"` or `"kx"`.
+type ExprKind = choice:
+    EName SName
+    ELit Literal
+    EUnit Text
+    ENil Text
+    EBound Text
+    ETuple [Expr]
+    EArray [Expr]
+    EMap [((Expr, Expr))]
+    # a map in single braces, refused by the checker (`single-brace-map`): single braces hold
+    EMapSingle [((Expr, Expr))]
+    EGroup Expr
+    # `{ e }`, a hold: a sigiled value goes into a type variable whole, unlifted (Jimmy's
+    # ruling of 12 November)
+    EHold Expr
+    ECall Expr, [Arg], Bool, Bool
+    EBinary Text, Expr, Expr
+    EUnary Text, Expr
+    ESuffixed Text, QualName, Expr, Expr
+    EFreeSigil Text, Expr
+    EField Expr, Text, Ident
+    EIndex Expr, Expr
+    ETopicField Ident
+    ETopicIndex Expr
+    EMethod Expr, SName, [Arg]
+    ETypeArgs Expr, [Type]
+    ECast Expr, Type, Bool
+    ENonEmpty Expr
+    EAbsent
+    ERest
+    # a lambda: its parameters (none written for `\body`), its body, and for each parameter
+    # whether it is written `prompt` (ruling PT)
+    ELambda ?[Pattern], LambdaBody, [Bool]
+    EIf Cond, Block, ?Block
+    EMatch Expr, [Arm]
+    ERebuild Expr, Block
+    EFor ?ForBinders, Expr, Block
+    EGiven Block
+    EUpdate Expr, Block
+    EWidgetBlock Block
+    EMonad Expr, Block
+    ETemplate Template
+    EAny Expr
+    ELens [Ident]
+    EError
+derive ^Eq, ^Debug
+
+# A hold's braces, for diagnostics that show one: `{!e}`. The parser's `HoldPrimary`
+# reads them.
+let holdBraces = (("\{", "\}"))
+
+# An expression's source text in a hold's braces.
+Held: fn Text -> Text
+fn Held src:
+    let ((open, close)) = holdBraces
+    "{open}{src}{close}"
+
+# `marks` are the sigils written on a named argument's field (`$label=$t`), "" for a plain
+# name or a positional argument.
+type Arg = record:
+    marks: Text
+    ?name: Ident
+    value: Expr
+    span: Range
+derive ^Eq, ^Debug
+
+type LambdaBody = choice:
+    LbExpr Expr
+    LbBlock Block
+derive ^Eq, ^Debug
+
+type Cond = choice:
+    CondExpr Expr
+    CondBind Pattern, Expr, ?Expr
+derive ^Eq, ^Debug
+
+type ForBinders = record:
+    first: Pattern
+    ?second: Pattern
+derive ^Eq, ^Debug
+
+type Arm = record:
+    ?pattern: Pattern
+    ?guard: Expr
+    body: Block
+    span: Range
+derive ^Eq, ^Debug
+
+# ---------------------------------------------------------------------------------------
+# Blocks and statements
+# ---------------------------------------------------------------------------------------
+
+type Block = record:
+    stmts: [Stmt]
+    inline: Bool
+    span: Range
+derive ^Eq, ^Debug
+
+type Stmt = record:
+    kind: StmtKind
+    span: Range
+derive ^Eq, ^Debug
+
+# An accumulation is its operator's spelling, `"+="`, `"-="`, `"*="` or `"/="`.
+type StmtKind = choice:
+    SEmit Row
+    SBind Pattern, Expr, ?Expr
+    SIgnore Expr
+    SLet Pattern, ?Type, Expr
+    SSignature Signature
+    SFn FnClause
+    SWidget WidgetDecl
+    SSet Expr, Expr
+    # `&e <: v`: a map entry put from a `?V` (Jimmy's ruling on map entries)
+    SPut Expr, Expr
+    SAccum Expr, Text, Expr
+    SRequire Expr
+    SForbid Expr
+    SWhile Cond, Block
+    SReturn Expr
+    SExpr Expr
+derive ^Eq, ^Debug
+
+# ---------------------------------------------------------------------------------------
+# Templates (Templates ch. 2)
+# ---------------------------------------------------------------------------------------
+
+# `keyword` is `"Output"`, `"InlineText"`, `"Raw"` or `"File"`; `delims` `"single"` or
+# `"double"`.
+type Template = record:
+    keyword: Text
+    lang: Text
+    delims: Text
+    parts: [TemplatePart]
+    span: Range
+derive ^Eq, ^Debug
+
+type TemplatePart = choice:
+    TpText Text
+    TpPlaceholder Expr, ?Nat
+    TpBlock Block
+    # `\{{` in a code template, refused by the checker (`brace-placeholder`)
+    TpBadEscape Range
+    TpCall SName, [Arg], ?[TemplatePart], Range
+derive ^Eq, ^Debug

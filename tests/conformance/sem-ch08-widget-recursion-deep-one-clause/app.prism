@@ -1,0 +1,33 @@
+# A widget of one clause that calls itself in a static position deeper than sixteen
+# levels, the recursion guarded by a building `match` in one widget and by a building
+# `if` with no `else` in another (Semantics ch. 4: "widget functions recurse as deep as
+# their data"; a building `match`'s or `if`'s arm adds no path segment; rulings TC and
+# IE2: a building `if` with no `else` builds its arm or nothing). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@ByMatch: fn Nat -> @unit
+fn @ByMatch n:
+    Ui.Label($text=$"level {n}")
+    match n -? 1:
+        ? m: @ByMatch m
+        nil: Ui.Label($text=$"end")
+
+@ByIf: fn Nat -> @unit
+fn @ByIf n:
+    Ui.Label($text=$"step {n}")
+    if n > 0:
+        match n -? 1:
+            ? m: @ByIf m
+            nil: Ui.Label($text=$"none")
+
+@matched: @unit
+@matched:
+    @ByMatch 20                                                  # 0 to 21
+    Ui.Label($text=$"after")                                      # 22
+
+@iffed: @unit
+@iffed:
+    @ByIf 20                                                     # 0 to 20
+    Ui.Label($text=$"after")                                      # 21

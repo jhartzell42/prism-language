@@ -1,0 +1,25 @@
+# Derived by hand from Semantics ch. 2, "The replacement", and Appendix B, `Replace`: `$n` takes all the digits that follow (`$1x` is group 1 then `x`), `${name}` a named group, `$$` a `$`; a group that took no part copies nothing; the escapes write `\n`, a tab, `/`, `\` and the code point named; every match the iteration rule finds is replaced (`a*` over "baaa" matches empty at 0 and 1-4, so "-b-"; the empty pattern matches at every character boundary).
+check groups
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+
+check escapes
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+
+check every
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok

@@ -1,0 +1,7 @@
+# The tests of sem-ch04-building-match-read-above.
+emit Ui.*
+use App.*
+use Ui.*
+
+test lines_above_read_the_arms_result, @main:
+    build

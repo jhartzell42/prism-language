@@ -1,0 +1,8 @@
+# Audited: o is 14, halved to 7, and the map holds two entries: 9.
+# The tests of ts-ch01-local-runtime-name (Semantics chapter 6).
+emit Ui.*
+use App.*
+
+test a_local_never_spells_a_helper, @shown:
+    build
+        => expect Ui.Label(text="9")

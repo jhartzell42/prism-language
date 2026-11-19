@@ -1,0 +1,7 @@
+# The tests of ts-ch03-assoc-param-takes-optional (Type System chapter 3).
+emit Ui.*
+use App.*
+
+test taken_whole, @main:
+    build
+        => expect Ui.Label(text="Full \"x\" Full \"y\"")

@@ -1,0 +1,25 @@
+# A named function with a parameter written `bounded fn`, given a lambda, a named
+# function, a local function value and its own parameter handed on, to another function
+# and to the prelude's `Each` (Type System ch. 5, The color: "`bounded fn` states a
+# bounded function type"; "A signature written `bounded fn` has its unwritten parameters
+# bounded"). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Apply: bounded fn (bounded fn Nat -> Nat), Nat -> Nat
+fn Apply F, n = F n
+
+Twice: bounded fn (bounded fn Nat -> Nat), Nat -> Nat
+fn Twice F, n = Apply F, (Apply F, n)
+
+Mapped: bounded fn (bounded fn Nat -> Nat), [Nat] -> [Nat]
+fn Mapped F, xs = Each xs, F
+
+Inc: fn Nat -> Nat
+fn Inc n = n + 1
+
+@page: @unit
+@page:
+    let Local = \|n| n * 2
+    Ui.Label($text=$"{Apply (\|n| n + 1), 5} {Apply Inc, 5} {Apply Local, 5} {Twice Inc, 5} {Fold (Mapped Inc, [[1, 2]]), 0, \|sum, n| sum + n}")

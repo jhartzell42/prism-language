@@ -1,0 +1,23 @@
+# `may-not-end`: a set anywhere in a loop's body counts, at any depth. `Spin`'s inner loop
+# adds two to `&fuel` on each of its turns, undoing the outer loop's `&fuel <= less`, so
+# the outer loop may never end; `Drain`'s inner loop counts into `&_` instead, and checks
+# clean.
+Spin: fn Nat, Nat -> Nat
+fn Spin fuel, other = update 0:
+    let &fuel = fuel
+    let &other = other
+    while ? less <- &fuel -? 1:
+        &fuel <= less
+        while ? k <- &other -? 1:
+            &other <= k
+            &fuel += 2
+
+Drain: fn Nat, Nat -> Nat
+fn Drain fuel, other = update 0:
+    let &fuel = fuel
+    let &other = other
+    while ? less <- &fuel -? 1:
+        &fuel <= less
+        while ? k <- &other -? 1:
+            &other <= k
+            &_ += 2

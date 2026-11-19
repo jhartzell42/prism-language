@@ -1,0 +1,7 @@
+# Derived by hand from Type System ch. 2: 1 + 2 + 10 + 100 + 1 + 1000 + 2000 is 3114; a case
+# with a payload shows as `Some 4`, the record as it is written.
+test program_types_named_as_the_runtimes
+
+tick 0
+  added:
+    0: Ui.Label(text="3114 Some 4 Row(label=\"c\", count=3)")

@@ -1,0 +1,17 @@
+# Ruling AQ: a type of a module and an associated type of a trait in that module may
+# share a name, in either order; the bare name is the program's type, and the associated
+# type is written through its trait (`^Box.Item`). (Before AQ this was `duplicate-name`.)
+# Written by Claude on the claude-self-hosting branch; subject to change.
+type Item = record:
+    count: Nat
+
+trait ^Box a:
+    type Item
+    Open: fn a -> Nat
+
+trait ^Bag a:
+    type Stuff
+    Pour: fn a -> Nat
+
+type Stuff = record:
+    label: Text

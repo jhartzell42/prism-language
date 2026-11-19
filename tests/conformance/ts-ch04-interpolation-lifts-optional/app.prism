@@ -1,0 +1,19 @@
+# An interpolation lifted over `?` at the plain layer (Type System ch. 4, "Field access,
+# indexing, interpolation, the topic": interpolation is an application of the
+# text-building function to every hole, and an application lifts over a `?` operand,
+# giving `nil` when the operand is). Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Greet: fn ?Text -> ?Text
+fn ?Greet ?name = "hello {?name}!"
+
+?Name: fn Nat -> ?Text
+fn ?Name 0 = nil
+fn ?Name n = ? "n{n}"
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Or (?Greet (?Name 1)), "none"} {Or (?Greet (?Name 0)), "none"}")      # 0

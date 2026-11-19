@@ -1,0 +1,34 @@
+# A host in a row of a `for`, whose guest's request element stands in an arm of a
+# `match`: the request comes from the guest's place 0.1 and is answered by the host's arm.
+# Either alone (no `for`, or the request outside the arm) is answered. Pinned down from
+# host-bug-15 and host-bug-16, which abort with "a request from ..1.2, which has no row
+# under the host": the request's path loses its host segment inside the arm.
+# Written by Claude, 15 November 2026, on the claude-self-hosting branch. Subject to change.
+emit Ui.* | Ask.*
+test mod Tests
+
+tag Ask.Go of Element !Nat:
+    !go: Ui.Click
+
+type Mode = choice:
+    Plain
+    Quiet
+derive ^Eq, ^Debug
+
+@Guest: fn Mode -> @unit emit Ui.* | Ask.*
+fn @Guest mode:
+    match mode:                                                         # 0
+        Plain:
+            !press <- Ui.Button($label=$"press")                        # 0.0
+            !got <- Ask.Go(!go=!press)                                  # 0.1
+            $n <- 0 then !got
+            Ui.Label($text=$"got {$n}")                                 # 0.2
+        Quiet:
+            Ui.Label($text=$"quiet")                                    # 0.0
+
+@page: @unit
+@page:
+    ignore <- for k, $m <- $ {{1: Plain}}:                              # 0.[k]
+        ignore <- @Host (@Guest Plain), \|p, e| match e:                # 0.[k].0
+            Ask.Go(!go=!go): @ 5 on !go
+            otherwise: @Element e

@@ -1,0 +1,19 @@
+# A widget's result that is a bundle of an event and a dynamic (Type System ch. 2,
+# "Bundles"), taken apart where it is bound: `@counter` gives its button's clicks and its
+# count, and the page reads both. Written for prismc's back end. Work in progress, subject
+# to change.
+emit Ui.*
+test mod Tests
+
+@counter: @((!Nat, $Nat))
+@counter:
+    !go <- Ui.Button($label=$"go")                           # 0
+    $n <- 0 then $n + 1 on !go
+    @ ((($n + 1) on !go, $n))
+
+@page: @$Text
+@page:
+    ((!counted, $count)) <- @counter
+    $last <- 0 then !counted
+    Ui.Label($text=$"{$count} after {$last}")                # 1
+    @ "{$count}"

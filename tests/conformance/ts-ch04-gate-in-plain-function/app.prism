@@ -1,0 +1,20 @@
+# `!Gate` called with an event in a plain function that gives an event (Type System ch. 4, "A sigiled parameter is not lifted over": the call is not lifted,
+# its event arguments are event values; Appendix B: `!Gate`
+# fires the event while the dynamic reads true). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+!Open: fn $Bool, !Nat -> !Nat
+fn !Open $open, !press = 10 + (!Gate $open, !press)
+
+@page: @unit
+@page:
+    !press <- Ui.Button($label=$"press")                         # 0
+    !toggle <- Ui.Button($label=$"toggle")                       # 1
+    $open <- False then not $open on !toggle
+    let !through = !Open $open, (1 on !press)
+    $firings <- 0 then $firings + 1 on !through
+    $last <- 0 then !through
+    Ui.Label($text=$"{$firings}: {$last}")                       # 2

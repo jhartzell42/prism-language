@@ -1,0 +1,23 @@
+# An output `@HostList` sends down is built by its tag's output constructor, written under
+# the tag's name, `Ui.Button.Output` (Semantics rulings round 12, AQ; ch. 9, the list form):
+# a function from what the tag's answer carries to an `Output c` of every row holding the
+# tag's family. A tag with no output answers with `unit`, a `$~Contents` one with a
+# `~Contents`. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.* | Fs.*
+use Ui.*
+use Fs.*
+
+Mixed: fn Click, Contents -> [Output (Ui.* | Fs.*)]
+fn Mixed c, text = [[Ui.Button.Output c, Ui.Label.Output unit, Fs.Contents.Output (~ text)]]
+
+@child: @unit
+@child:
+    !press <- Ui.Button($label=$"inner")                                 # 0
+    $n <- 0 then $n + 1 on !press
+    Ui.Label($text=$"pressed {$n}")                                      # 1
+
+@list: @unit
+@list:
+    !send <- Ui.Button($label=$"send")                                   # 0
+    let !answers = (Map (Each (Take (Keys $doc), 1), \|p| ((p, Ui.Button.Output click)))) on !send
+    ((ignore, $doc)) <- @HostList @child, !answers, \|p, e| @Element e   # 1/[p]/0

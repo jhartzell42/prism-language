@@ -1,0 +1,9 @@
+# The merge across nodes' tests: declarations of heights-merge-all-across-nodes.
+emit Ui.*
+use App.*
+use Ui.*
+
+test both_inputs_one_firing, @page:
+    build
+    click at 0
+    click at 0

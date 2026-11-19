@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 3 (a method is called at the impl its type picks) and ch. 2 (a function is a value): `Many` at `Text` gives the two blanks, at `Nat` gives 1 and 2; `Doubled` doubles each.
+test a_method_is_passed_as_a_value
+
+tick 0
+  added:
+    0: Ui.Label(text="[blank 1][blank 2] 3 [aa][bb] 6")

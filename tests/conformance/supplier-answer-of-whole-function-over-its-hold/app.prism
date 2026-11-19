@@ -1,0 +1,31 @@
+# A supplier returned by a widget function (`@Counting`, as c6's `@ChessByHand` returns
+# its supplier) answers a `$` output with a function that takes its dynamic whole, over
+# a hold of the widget (`@ $Present $count`, the library's `$Loaded $game`). Found by the
+# p19 run on c6 and chess (gap LF: no live dynamic to give).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Gauge of Element $?Nat:
+    name: Text
+
+@meter: @unit emit Ui.* | Pad.*
+@meter:
+    $?level <- Pad.Gauge(name="tank")                                          # 0
+    Ui.Label($text=$"level {Or $?level, 0}")                                   # 1
+
+$Present: fn $s -> $?s
+fn $Present $x = ? $x
+
+@Counting: fn prompt !Ui.Click -> @(forall o. fn Path, prompt Element (Ui.* | Pad.*) o -> @o)
+fn @Counting !add:
+    $count <- 0 then $count + (1 on !add)
+    @ \|path, element| match element:
+        Pad.Gauge(..): @ $Present $count
+        otherwise: @Element element
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")                                           # 0
+    Supply <- @Counting !add
+    ignore <- @Host @meter, Supply                                             # 1/[p]

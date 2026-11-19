@@ -1,0 +1,6 @@
+# `calls-unbounded`: a bounded function calls an unbounded one.
+Spin: unbounded fn Nat -> Nat
+fn Spin n = Spin n
+
+Step: fn Nat -> Nat
+fn Step n = Spin n

@@ -1,0 +1,6 @@
+# Derived by hand: `Apply` applies each function to 3.
+test named
+
+tick 0
+  added:
+    0: Ui.Label(text="4 5 10")

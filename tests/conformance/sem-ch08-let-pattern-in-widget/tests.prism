@@ -1,0 +1,7 @@
+# The tests of sem-ch08-let-pattern-in-widget.
+emit Ui.*
+use App.*
+
+test it_builds, @page:
+    build
+        => expect Ui.Label(text="2 by 3")

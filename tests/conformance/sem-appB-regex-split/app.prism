@@ -1,0 +1,8 @@
+# Semantics Appendix B, `Split`: the texts between the matches `Matches` finds, from the
+# front to the back, each a view, empty ones kept: `k` matches give `k + 1` texts.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+test mod Tests
+
+# A comma-separated line's fields, empty ones kept (rulings round 5, RX-P).
+Fields: fn Text -> [Text]
+fn Fields line = Split %/\s*,\s*/, line

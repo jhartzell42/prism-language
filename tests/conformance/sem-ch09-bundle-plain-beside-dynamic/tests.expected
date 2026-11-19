@@ -1,0 +1,13 @@
+# Derived by hand from Type System ch. 2 ("Bundles and sparse tuples") and Semantics ch. 8 ("A new place's first value": the first-value query answers at the build; a state is keyed by the element's value): the plain part is read once, at the build; the push moves the `$` part.
+test plain_beside_dynamic
+
+tick 0
+  added:
+    0: Pad.Port(address="chat:7000")
+    1: Ui.Label(text="port 7: up")
+
+tick 1
+  in:
+    Pad.Port(address="chat:7000") = ((7, "down"))
+  changed:
+    1: Ui.Label(text="port 7: down")

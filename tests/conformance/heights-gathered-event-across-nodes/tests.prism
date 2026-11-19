@@ -1,0 +1,8 @@
+# The gathered event across nodes' tests: declarations of heights-gathered-event-across-nodes.
+emit Ui.*
+use App.*
+use Ui.*
+
+test two_rows_one_firing, @page:
+    build
+    click Ui.Button(label="a now"), click Ui.Button(label="b later")

@@ -1,0 +1,18 @@
+# Derived by hand from Semantics ch. 7 and 8 (places in order of the body, `then` on the event) and Step's arithmetic.
+test counting_up
+
+tick 0
+  added:
+    0: Ui.Button(label="Next")
+    1: Ui.Label(text="0 steps")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="2 steps")
+
+check captions
+1: ok
+2: ok
+3: ok

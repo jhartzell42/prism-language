@@ -1,0 +1,13 @@
+# Derived by hand from Type System ch. 5 (a `u fn` takes its color from its call; the function the event holds is the one passed) and Semantics ch. 3 (`on` fires with its left side's value in the tick of its event; a function lifted over an event fires in that tick): the click fires the function, which adds one to 5. Never run.
+test it_fires
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="6")

@@ -1,0 +1,8 @@
+# The tests of ts-ch05-result-type-settled (Type System chapter 5).
+emit Ui.*
+use App.*
+
+test settled, @main:
+    build
+        => expect Ui.Label(text="-0")
+        => expect Ui.Label(text="1 0 [[7]]")

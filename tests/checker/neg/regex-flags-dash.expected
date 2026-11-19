@@ -1,0 +1,4 @@
+tests/checker/neg/regex-flags-dash.prism:2: error[regex]: a - that turns off no flag
+    let r = %/(?i-)/
+                 ^
+1 error

@@ -1,0 +1,6 @@
+# Derived by hand: the box's 4 tripled is 12, plus 5 is 9.
+test trait_method_fn_param
+
+tick 0
+  added:
+    0: Ui.Label(text="12 9")

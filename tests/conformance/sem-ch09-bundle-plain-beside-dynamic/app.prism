@@ -1,0 +1,14 @@
+# A bundle with a plain part beside a `$` part (Type System ch. 2, "Bundles and sparse
+# tuples"; Semantics ch. 8, "A new place's first value": the plain part is fixed at the
+# place's build, the `$` part takes pushes from the next tick on). Written by Claude on
+# the claude-lowering branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Port of Element ((Nat, $Text)):
+    address: Text
+
+@chat: @unit
+@chat:
+    ((id, $state)) <- Pad.Port(address="chat:7000")              # 0
+    Ui.Label($text=$"port {id}: {$state}")                       # 1

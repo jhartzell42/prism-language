@@ -1,0 +1,6 @@
+# Derived by hand from Part III ch. 7 (a widget function applied to a prefix of its arguments is a function value) and Language ch. 6 (widget function applications are transparent).
+test applied_once
+
+tick 0
+  added:
+    0/0/0: Ui.Label(text="seven 7")

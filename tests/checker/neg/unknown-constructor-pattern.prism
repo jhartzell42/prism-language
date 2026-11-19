@@ -1,0 +1,16 @@
+# A pattern of a constructor nothing declares, in a clause and in a `match`, is refused by
+# the checker, so the back end's guards "a pattern of an unknown constructor"
+# (lower/patterns.prism) are not reached. Written by Claude on the claude-lowering branch;
+# subject to change.
+type Coin = choice:
+    Heads
+    Tails
+
+Side: fn Coin -> Nat
+fn Side (Rim n) = n
+fn Side c = 0
+
+Field: fn Coin -> Nat
+fn Field c = match c:
+    Rim(width=w, ..): w
+    otherwise: 0

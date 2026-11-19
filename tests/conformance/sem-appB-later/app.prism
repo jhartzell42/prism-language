@@ -1,0 +1,15 @@
+# `@Later` (Semantics Appendix B: "`@Later: fn !a -> @!a`: each firing answered one tick
+# later, through a zero-delay `Time.After`. A World implements time, so this one goes
+# through a World, and `@Defer` does not"). Its `Time.After` is a place of the block,
+# since a widget is transparent (ch. 8). Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.* | Time.*
+test mod Tests
+use Ui.*
+
+@page: @unit
+@page:
+    !go <- Ui.Button($label=$"go")                               # 0
+    !after <- @Later !go                                         # 1
+    $n <- 0 then $n + 1 on !after
+    Ui.Label($text=$"later {$n}")                                # 2

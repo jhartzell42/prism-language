@@ -1,0 +1,13 @@
+# A `match` with no arm is exhaustive over a choice with no case and over nothing else
+# (hosting bug 29: `type Never = choice:` and `fn Absurd never = match never:` are legal;
+# Type System ch. 2, "Patterns and exhaustiveness": a match covers every value of its
+# type). `Bool` has two values, so the empty `match` misses one.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+
+Wrong: fn Bool -> Nat
+fn Wrong flag = match flag:
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Wrong True}")

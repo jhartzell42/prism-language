@@ -1,0 +1,11 @@
+# `mismatch`: a function taking an `Error` is no function taking a `~Nat`: a `~Nat` that
+# succeeded is no `Error` (Semantics ch. 10: an `Error` is a `~T`'s failure, not the other
+# way round). Written by Claude on the claude-bugs branch; subject to change.
+Msg: fn Error -> Text
+fn Msg e = e.message
+
+Use: fn (fn ~Nat -> Text), ~Nat -> Text
+fn Use F, ~x = F ~x
+
+Shown: fn Nat -> Text
+fn Shown n = Use Msg, (~ n)

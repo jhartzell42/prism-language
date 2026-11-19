@@ -1,0 +1,5 @@
+tests/checker/neg/sem-ch07-for-own-gather.prism:11: error[prompt-cycle]: a prompt cycle: `$rows`, `$count`
+        $rows <- for k, ignore <- $names:                             # 0/[k]
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: break it with a hold: `$last <- start then ...` reads the value as the tick opened
+1 error

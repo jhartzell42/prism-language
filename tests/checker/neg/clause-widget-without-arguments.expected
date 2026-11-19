@@ -1,0 +1,4 @@
+tests/checker/neg/clause-widget-without-arguments.prism:13: error[collision]: `@Twice` is defined twice
+    @Twice:
+    ^^^^^^^
+1 error

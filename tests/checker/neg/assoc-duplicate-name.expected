@@ -1,0 +1,5 @@
+tests/checker/neg/assoc-duplicate-name.prism:9: error[duplicate-name]: `Item` is already an associated type of `^Box` in this module
+        type Item
+        ^^^^^^^^^
+  fix: rename one of them, or declare the trait in a module of its own
+1 error

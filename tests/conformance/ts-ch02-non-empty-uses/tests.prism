@@ -1,0 +1,7 @@
+# The tests of ts-ch02-non-empty-uses.
+emit Ui.*
+use App.*
+
+test non_empty_uses, @main:
+    build
+        => expect Ui.Label(text="3 2 3 b 3 many one 7 same")

@@ -1,0 +1,29 @@
+# An event parameter of a widget that calls itself, read as a value in the widget's
+# block: handed whole, in a tuple, to a function that takes the event so (Semantics
+# ch. 8: a widget's parameter is its argument in the block; Type System ch. 2: an event
+# is a value, and a tuple may hold one; ch. 4: a function whose parameter holds an event
+# below its top takes it whole). sem-ch08-widget-recursion-deep-event-parameter with the
+# event handed on. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+!Fired: fn ((!Click, Nat)) -> !Nat
+fn !Fired ((!made, more)) = more on !made
+
+@Chain: fn Nat, !Click -> @unit
+fn @Chain 0, !go:
+    $seen <- 0 then $seen + 1 on !go
+    Ui.Label($text=$"end: {$seen}")
+fn @Chain n, !go:
+    $seen <- 0 then !Fired ((!go, n))
+    Ui.Label($text=$"level {n}: {$seen}")
+    match n -? 1:
+        ? m: @Chain m, !go
+        nil: Ui.Label($text=$"end")
+
+@main: @unit
+@main:
+    !go <- Ui.Button($label=$"go")                                # 0
+    @Chain 3, !go                                                # 1 to 4
+    Ui.Label($text=$"after")                                      # 5

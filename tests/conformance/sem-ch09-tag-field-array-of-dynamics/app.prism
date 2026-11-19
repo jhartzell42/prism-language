@@ -1,0 +1,17 @@
+# A tag's plain field whose type holds dynamics below its top (Type System ch. 1: a value
+# that holds a dynamic is a type as any other; claude/incremental-host-document.md, WD: a
+# foreign World reads a level flattened through, every nested dynamic sampled, and the
+# place is sent again when one moves).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Count.*
+test mod Tests
+use Ui.*
+
+tag Count.Many of Element unit:
+    values: [$Nat]
+
+@main: @unit emit Ui.* | Count.*
+@main:
+    !one <- Ui.Button($label=$"+1")                               # 0
+    $asks <- 0 then $asks + 1 on !one
+    Count.Many(values=[[$asks, $ 5]])                             # 1

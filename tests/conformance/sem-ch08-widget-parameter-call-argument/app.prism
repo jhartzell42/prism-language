@@ -1,0 +1,23 @@
+# A widget function parameter whose argument is a call's result, a function value that
+# gives a blueprint, applied in the widget's block (Semantics ch. 8: a widget function
+# parameter is applied at the block's next positions, as the widget it names would be;
+# Type System ch. 2: a function is a value, and a blueprint is a value a function may
+# give). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Shower: fn Text, Nat -> @unit
+fn @Shower label, n:
+    Ui.Label($text=$"{label} {n}")
+
+Chosen: fn Text -> (fn Nat -> @unit)
+fn Chosen label = \|n| @Shower label, n
+
+@Use: fn (fn Nat -> @unit) -> @unit
+fn @Use W:
+    W 1
+
+@main: @unit
+@main:
+    @Use (Chosen "shows")

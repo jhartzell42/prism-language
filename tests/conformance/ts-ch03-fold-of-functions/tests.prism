@@ -1,0 +1,7 @@
+# The tests of ts-ch03-fold-of-functions.
+emit Ui.*
+use App.*
+
+test composed, @main:
+    build
+        => expect Ui.Label(text="4 1")

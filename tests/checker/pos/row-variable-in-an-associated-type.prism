@@ -1,0 +1,23 @@
+# A signature's variable given where an associated type's row parameter stands is a row
+# variable of the signature (ruling RR): `Count: fn Seats d rest -> Nat` takes a
+# `Seated Fs.*` at `Box`. Found by the step 3 build on the tally (`@HostDocument`'s
+# `prompt Seats d rest`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+trait ^Hosting d:
+    type Seats rest
+
+type Box = record:
+    size: Nat
+
+type Seated rest = record:
+    $guest: (Text ==> $@(@unit emit Ui.* | rest))
+
+impl ^Hosting Box:
+    type Seats rest = Seated rest
+
+Count: forall d. fn Seats d rest -> Nat where d: ^Hosting
+fn Count seats = 0
+
+Counted: fn Seated Fs.* -> Nat
+fn Counted seated = Count<<Box>> seated

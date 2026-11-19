@@ -1,0 +1,7 @@
+# Derived by hand from Part III ch. 6 ("A per-document record of rows") and Part IV ch. 5 (`@HostRole` is one host over a `for` of the role's seats), with Semantics ch. 9's forwarding: the raisers' host is the page's place 0 and the watchers' place 1; inside each, the `for` is place 0, the seat's key, the `rebuild` place 0 and its generation #0, and the guest's label its place 1, forwarded at host/[p]/0. Each query is answered nil, so each guest is told 0. Re-derived by hand under ruling PL and ruling HP (SM3 (a)): `@HostSeats` is the page's 0 and each `@HostRole` its 0 and 1; in each the host is its 0 and the primitive that list's 0; the guest `@Seated` is the host's root, its `for` place 0, the seat's key, the `rebuild` the row's 0 and its generation #0, the guest blueprint applied there its 0 with a list of its own, and the label that list's 1.
+test each_role_hosted_by_its_own_line
+
+tick 0
+  added:
+    0/0/0/0.[0.[1].0.#0.0/1]/0: Ui.Label(text="raiser 1 told 0")
+    0/1/0/0.[0.["ada"].0.#0.0/1]/0: Ui.Label(text="watcher ada told 0")

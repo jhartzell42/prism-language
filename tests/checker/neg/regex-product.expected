@@ -1,0 +1,4 @@
+tests/checker/neg/regex-product.prism:2: error[regex]: nested counts multiplying past 1000
+    let r = %/(?:a{10}){101}/
+                       ^
+1 error

@@ -1,0 +1,10 @@
+# Audited: `$First $count` is the count; `Count` is 1 whatever the count.
+# The tests of ts-ch04-whole-in-a-body (Type System chapter 4).
+emit Ui.*
+use App.*
+
+test a_body_passing_its_dynamic_whole, @shown:
+    build
+        => expect Ui.Label(text="first 0 count 1")
+    click Ui.Button(label="Inc")
+        => expect Ui.Label(text="first 1 count 1")

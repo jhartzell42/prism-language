@@ -1,0 +1,27 @@
+# A widget of several clauses in a static position whose clauses end on a plain result
+# (Semantics ch. 4: "`@ v` lifts a plain value into the widget"; ch. 8: `<-` with a
+# blueprint builds the child and binds its result): the clause its plain argument chooses
+# is built, its places in the caller's sequence (the widest clause's positions, pick CS),
+# and the caller reads its result in the build (a label, a hold's step) as it reads a
+# one-clause widget's (sem-ch08-widget-plain-result). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@Pick: fn ?Nat -> @Text
+fn @Pick nil:
+    Ui.Label($text=$"none")                                       # 0
+    @ "zero"
+fn @Pick (? n):
+    Ui.Label($text=$"some {n}")                                   # 0
+    Ui.Label($text=$"second")                                     # 1
+    @ "n{n}"
+
+@Page: fn ?Nat -> @Text
+fn @Page ?x:
+    picked <- @Pick ?x                                           # 0, 1
+    Ui.Label($text=$"{picked}")                                   # 2
+    !go <- Ui.Button($label=$"go")                                # 3
+    $n <- 0 then $n + 1 on !go
+    Ui.Label($text=$"{picked} {$n}")                              # 4
+    @ picked

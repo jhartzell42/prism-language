@@ -1,0 +1,4 @@
+tests/checker/neg/regex-hex-two.prism:2: error[regex]: a \x escape needs two hex digits or braces
+    let r = %/\x/
+              ^
+1 error

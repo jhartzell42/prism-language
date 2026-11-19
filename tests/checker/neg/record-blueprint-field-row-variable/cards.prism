@@ -1,0 +1,8 @@
+# `Cards`, a child module of the root that emits a row variable.
+emit r
+
+type Slot = record:
+    name: Text
+    @inside: unit
+    make: fn Nat -> @unit
+    @named: unit emit Ui.*

@@ -1,0 +1,47 @@
+# Forty edits, each of one key: declarations of the program beside it.
+emit Ui.*
+use App.*
+use Ui.*
+
+test forty_edits, @rows:
+    build
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0
+    click at 0

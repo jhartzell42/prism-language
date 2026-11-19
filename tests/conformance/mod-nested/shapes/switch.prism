@@ -1,0 +1,6 @@
+# `Shapes.Switch`: a module whose name is a C++ keyword (`switch`).
+emit r
+use Shapes.Static.*
+
+Pick: fn Bool, Nat -> Nat
+fn Pick flag, n = if flag: n + (Sides Triangle) else: n

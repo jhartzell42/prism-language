@@ -1,0 +1,14 @@
+# `may-not-end`: a name bound again relates to nothing but what its new definition relates
+# to. The `match` takes `t` apart into a smaller `l`, but the `let` after it binds `l`
+# again to a bigger tree, and the last line calls `Grow` on that one.
+type Tree = choice:
+    Leaf Nat
+    Node Tree, Tree
+
+Grow: fn Tree -> Nat
+fn Grow t:
+    let n = match t:
+        Node l, r: Grow l
+        Leaf k: k
+    let l = Node t, t
+    n + (Grow l)

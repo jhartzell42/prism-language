@@ -1,0 +1,77 @@
+# A document parameterized by how it orders a tick's requests (tests/documents/tally's
+# `Tallied o`): its `^Document` impl, for every `o` with `^TallyOrder`, answers the
+# trait's `Order` by the parameter's own trait method, `fn Order due = OrderOf due`; a
+# generic function bounded by `^Document` calls `Order` on dues that name the document
+# only through their existential seat keys. Isolated from tally, whose crate called
+# `TallyOrder_t::order_of_f(due_p0)` and `Document_t::order_f(..)` with no type for the
+# trait's `Self` (rustc E0790: cannot call associated function on trait without
+# specifying the corresponding impl type).
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type SeatId (r: Role d)
+    Order: fn [Due d] -> Ordered d
+
+type SeatKey d = any (r: Role d): ((Fixed r, SeatId d r))
+
+type Due d = record:
+    seat: SeatKey d
+    at: Nat
+
+type Ordered d = record:
+    apply: [Due d]
+    wait: [Due d]
+
+OneATick: fn [Due d] -> Ordered d
+fn OneATick due = Ordered(apply=(Take due, 1), wait=(Drop due, 1))
+
+type TallyRole = choice:
+    Teller
+    Keeper
+derive ^Eq, ^Ord, ^Debug
+
+type Tallied o = choice:
+    Tallied
+
+trait ^TallyOrder o:
+    OrderOf: fn [Due (Tallied o)] -> Ordered (Tallied o)
+
+type OneEach = choice:
+    OneEach
+
+type KeepersFirst = choice:
+    KeepersFirst
+
+impl ^TallyOrder OneEach:
+    fn OrderOf due = OneATick due
+
+Reversed: fn [a] -> [a]
+fn Reversed xs = Fold xs, [[]], \|all, x| Append [[x]], all
+
+impl ^TallyOrder KeepersFirst:
+    fn OrderOf due = Ordered(apply=(Reversed due), wait=[[]])
+
+impl ^Document (Tallied o) where o: ^TallyOrder:
+    type Role = TallyRole
+    type SeatId r = Text
+    fn Order due = OrderOf due
+
+# What a tick applies, by the document's own order: the places, in order.
+Applied: forall d. fn [Due d] -> Text where d: ^Document
+fn Applied due:
+    let turn = Order (Each due, \|one| one)
+    "apply {Ats turn.apply}, wait {Ats turn.wait}"
+
+Ats: fn [Due d] -> Text
+fn Ats due = Fold due, "", \|all, one| if all == "": "{one.at}" else: "{all} {one.at}"
+
+Dues: forall o. fn unit -> [Due (Tallied o)] where o: ^TallyOrder
+fn Dues ignore = [[Due(seat=(any ((Fixed<<Teller>>, "ada"))), at=0), Due(seat=(any ((Fixed<<Keeper>>, "kim"))), at=1)]]
+
+@page: @unit
+@page:
+    Ui.Label($text=$"one each: {Applied<<Tallied OneEach>> (Dues<<OneEach>> unit)}")              # 0
+    Ui.Label($text=$"keepers first: {Applied<<Tallied KeepersFirst>> (Dues<<KeepersFirst>> unit)}")  # 1

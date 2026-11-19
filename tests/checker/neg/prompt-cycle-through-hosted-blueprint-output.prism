@@ -1,0 +1,21 @@
+# A blueprint whose output is an event prompt in an event it captured (`@Echo !x` gives
+# back `!x`) makes a cycle when what it gives back feeds that event, though it stands in
+# a dynamic of blueprints: building and ending guests is ownership and prompt in nothing,
+# but a guest's timed output stays prompt in what the blueprint captured (Jimmy, 15
+# November: a blueprint is a problem only if it outputs an event that is prompt in
+# another event). Must stay refused; p19 accepts it, a soundness hole. Expected text
+# derived by hand.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+@Echo: fn prompt !Nat -> @!Nat emit Ui.*
+fn @Echo !heard:
+    Ui.Label($text=$"echo")
+    @ !heard
+
+@room: @unit emit Ui.*
+@room:
+    let $@!echo = $ (@Echo !said)
+    $!back <- rebuild $@!echo:
+        _
+    !said <- @Switch $!back

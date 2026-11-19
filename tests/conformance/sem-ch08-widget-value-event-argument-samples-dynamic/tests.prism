@@ -1,0 +1,10 @@
+# The tests of sem-ch08-widget-value-event-argument-samples-dynamic.
+emit Ui.*
+use App.*
+
+test the_argument_samples_the_dynamic, @Page:
+    build
+    click at 0
+        => expect Ui.Label(text="shown 5")
+    click at 0
+        => expect Ui.Label(text="shown 6")

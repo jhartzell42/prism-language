@@ -1,0 +1,19 @@
+# Semantics ch. 4, the transcript after the test, byte for byte.
+test a_switch_hears_the_birth
+
+tick 0
+  added:
+    0: Ui.Button(label="New")
+    2: Ui.Label(text="heard=0")
+
+tick 1
+  changed:
+    2: Ui.Label(text="heard=1")
+
+tick 2
+  in:
+    0: click
+
+tick 3
+  changed:
+    2: Ui.Label(text="heard=2")

@@ -1,0 +1,22 @@
+# A widget-function parameter applied to arguments (Semantics ch. 8: "Widget function
+# applications and widget blocks are transparent. They add no segment; the binds inside
+# take positions in the caller's sequence"; ch. 9 passes such a function as a supplier):
+# `@Frame` builds its parameter twice, each application's places the next numbers.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@Row: fn Nat -> @unit
+fn @Row n:
+    Ui.Label($text=$"row {n}")
+
+@Frame: fn (fn Nat -> @unit) -> @unit
+fn @Frame Inner:
+    Ui.Label($text=$"top")                                        # 0
+    Inner 1                                                       # 1
+    Inner 2                                                       # 2
+    Ui.Label($text=$"bottom")                                     # 3
+
+@main: @unit
+@main:
+    @Frame @Row

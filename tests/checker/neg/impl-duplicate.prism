@@ -1,0 +1,7 @@
+# `impl-duplicate`: a derived `^Debug` and a written one.
+type Card = record:
+    rank: Nat
+derive ^Debug
+
+impl ^Debug Card:
+    fn Debug c = "card {c.rank}"

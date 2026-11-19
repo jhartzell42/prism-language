@@ -1,0 +1,7 @@
+# The tests of doc-role-generic-call-lifted-over-an-event-in-an-opened-existential.
+emit Ui.*
+use App.*
+
+test told_at_its_role, @page:
+    build
+    click at 0

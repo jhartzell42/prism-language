@@ -1,0 +1,32 @@
+# Part VII ch. 7, step C8: `derive ^X via ^Y`, the smallest use (Part IV ch. 4, doubt DV:
+# "derive these impls from that trait's functions", a derive for one type, never a blanket
+# impl). The via definitions give `^Named`'s method from `^Titled`'s; `Book` implements
+# `^Titled` by hand and opts in to `^Named` by its own derive line; the label shows the
+# delegated method's result.
+# The form of the via definitions, `derive ^Named a via ^Titled a:` with the methods
+# under it, is Claude's first ruling: the books name the derive line only.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Named a:
+    Name: fn a -> Text
+
+trait ^Titled a:
+    Title: fn a -> Text
+
+# What `derive ^Named via ^Titled` gives a type: its name is its title, put in words.
+derive ^Named a via ^Titled a:
+    fn Name x = "named by its title, {Title x}"
+
+type Book = record:
+    title: Text
+
+impl ^Titled Book:
+    fn Title book = book.title
+
+derive ^Named via ^Titled for Book
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Name Book(title="Dune")}")                       # 0

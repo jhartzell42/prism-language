@@ -1,0 +1,6 @@
+# Derived by hand: the outer tree's kind becomes a wrap of a leaf, depth 1.
+test recursive_field_written
+
+tick 0
+  added:
+    0: Ui.Label(text="1")

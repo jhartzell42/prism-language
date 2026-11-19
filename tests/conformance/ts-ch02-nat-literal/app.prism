@@ -1,0 +1,19 @@
+# A number literal in a pattern is of the scrutinee's type: `0` against a `Nat` is a
+# `Nat`, in a clause and in a `match`. Written for prismc's
+# back end. Work in progress, subject to change.
+emit Ui.*
+test mod Tests
+
+Name: fn Nat -> Text
+fn Name 0 = "zero"
+fn Name 1 = "one"
+fn Name n = "many"
+
+Parity: fn Nat -> Text
+fn Parity n = match Or (?Mod n, 2), 0:
+    0: "even"
+    otherwise: "odd"
+
+@shown: @unit
+@shown:
+    Ui.Label($text=$"{Name 0} {Name 1} {Name 5} {Parity 4} {Parity 7}")     # 0

@@ -1,0 +1,8 @@
+# The tests of generic-widget-value-over-a-type-only-its-bound-names.
+emit Ui.*
+use App.*
+
+test each_says_by_its_type, @page:
+    build
+    click at 0.["ada"].0.#0.0/0
+    click at 0.["bob"].0.#0.0/0

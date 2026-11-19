@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 2, "Collections" (`xs as [a]+?` gives `?[a]+`, `nil` for an empty collection; ruling CK) and ch. 3 (the impl is the one of the type the call is at). Never run.
+test both_outcomes
+
+tick 0
+  added:
+    0: Ui.Label(text="non-empty 2 non-empty 2, plain 0 plain 0, non-empty 1, nothing")

@@ -1,0 +1,22 @@
+# The tests of sem-ch08-first-value-after-late-arm.
+emit Ui.* | Fs.*
+use App.*
+use Fs.*
+
+test loud, @Panel (Loud "x"):
+    with Fs.Contents(path="motd") = ~ Contents(text="top"), with Fs.Contents(path="inner") = ~ Contents(text="under"), build
+        => expect Ui.Label(text="10: top")
+        => expect Ui.Label(text="under")
+    push Fs.Contents(path="inner") = ~ Contents(text="moved")
+        => expect Ui.Label(text="moved")
+    push Fs.Contents(path="motd") = ~ Contents(text="new")
+        => expect Ui.Label(text="10: new")
+
+test soft, @Panel Soft:
+    with Fs.Contents(path="motd") = ~ Contents(text="top"), with Fs.Contents(path="inner") = ~ Contents(text="under"), build
+        => expect Ui.Label(text="20: top")
+        => expect Ui.Label(text="under")
+    push Fs.Contents(path="inner") = ~ Contents(text="moved")
+        => expect Ui.Label(text="moved")
+    push Fs.Contents(path="motd") = ~ Contents(text="new")
+        => expect Ui.Label(text="20: new")

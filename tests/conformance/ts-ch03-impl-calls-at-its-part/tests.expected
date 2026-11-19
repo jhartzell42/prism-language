@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 3 (the impl at `Pair a` uses the impl at `a`): a pair names its left part in parentheses, twice nested; zero of a nested pair is "z3" at its leftmost.
+test calls_at_the_part
+
+tick 0
+  added:
+    0: Ui.Label(text="((a)) ((z3))")

@@ -1,0 +1,4 @@
+tests/checker/neg/assoc-capturing-lambda.prism:30: error[mismatch]: expected `Pair Text`, found `Tag`
+        (G (Pair(one="a", two="b"))) + (G (Tag(name="c")))
+                                          ^^^^^^^^^^^^^^^
+1 error

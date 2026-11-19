@@ -1,0 +1,29 @@
+# A widget of one clause whose parameter is a pattern that cannot fail: a tuple of plain
+# names, and a tuple that takes a bundle apart (Semantics ch. 8: a widget's parameters are
+# patterns, as a function's are; Type System ch. 2, "Bundles": a bundle is a plain
+# aggregate, so a parameter's tuple pattern takes it apart). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Counter: fn Nat -> @((!Click, $Nat))
+fn @Counter page:
+    !more <- Ui.Button($label=$"more on {page}")
+    $guests <- 1 then $guests + 1 on !more
+    @ ((!more, $guests))
+
+@Shown: fn ((Text, Nat)) -> @unit
+fn @Shown ((name, count)):
+    Ui.Label($text=$"{name}: {count}")
+
+@Counted: fn Text, ((!Click, $Nat)) -> @unit
+fn @Counted name, ((!more, $guests)):
+    $clicks <- 0 then $clicks + 1 on !more
+    Ui.Label($text=$"{name}: {$guests} guests, {$clicks} clicks")
+
+@main: @unit
+@main:
+    ((!more, $guests)) <- @Counter 1                              # 0
+    @Shown (("a", 3))                                             # 1
+    @Counted "b", ((!more, $guests))                              # 2

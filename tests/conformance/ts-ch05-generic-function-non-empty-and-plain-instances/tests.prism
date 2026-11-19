@@ -1,0 +1,6 @@
+# The tests of ts-ch05-generic-function-non-empty-and-plain-instances.
+emit Ui.*
+use App.*
+
+test it_builds, @Page:
+    build

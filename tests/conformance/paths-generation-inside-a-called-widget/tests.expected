@@ -1,0 +1,22 @@
+# Derived by hand from ruling PL: `@Gen` at position 1 starts a list; its `rebuild` at 0 extends it with the generation and the row's places (`1/0.#0.0`, `1/0.#0.1`); the click on the old generation's button changes nothing; the next generation is `#1`.
+test a_generation_extends_its_widgets_list
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1/0.#0.0: Ui.Button(label="hit 0")
+    1/0.#0.1: Ui.Label(text="gen 0")
+
+tick 1
+  in:
+    1/0.#0.0: click
+
+tick 2
+  in:
+    0: click
+  added:
+    1/0.#1.0: Ui.Button(label="hit 1")
+    1/0.#1.1: Ui.Label(text="gen 1")
+  torn down:
+    1/0.#0.0: Ui.Button(label="hit 0")
+    1/0.#0.1: Ui.Label(text="gen 0")

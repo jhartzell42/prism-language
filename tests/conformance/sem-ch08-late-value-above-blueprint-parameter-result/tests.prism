@@ -1,0 +1,9 @@
+# The tests of sem-ch08-late-value-above-blueprint-parameter-result.
+emit Ui.*
+use App.*
+
+test loud, @Page True:
+    build
+
+test soft, @Page False:
+    build

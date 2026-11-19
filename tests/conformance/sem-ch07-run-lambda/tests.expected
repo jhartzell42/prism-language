@@ -1,0 +1,10 @@
+# Derived by hand from Semantics Appendix B (`@Run` starts the function and fires its result) and D6 as sem-ch07-calls-in-branches applies it (entering an unbounded function is a cycle point, and this lambda makes no call): one cycle, so the result lands at tick 1.
+test a_lambda_runs
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+tick 1
+  changed:
+    1: Ui.Label(text="4")

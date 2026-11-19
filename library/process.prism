@@ -1,0 +1,14 @@
+# The `Process` family (Platform ch. 1; Semantics ch. 9, "The CLI World's policy").
+emit Process.*
+
+# Ends the program after every request of its tick (round 47 EX: the code is a `U8`).
+tag Process.Exit of Element:
+    !code: U8
+
+# The command line's arguments, plain, answered once.
+tag Process.Args of Element [Text]
+
+# An environment variable's value, plain, answered once: `nil` when it is not set (or is
+# not UTF-8).
+tag Process.Env of Element ?Text:
+    name: Text

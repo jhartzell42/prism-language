@@ -1,0 +1,30 @@
+# A World's place with a bundle answer, taken apart by a tuple pattern, whose constant
+# field reads, as one value, a bundle a building `if` written below gives and one name
+# binds whole, whose plain part is late (Semantics ch. 4, "Binding groups and cycles":
+# any line may use any name the block binds, and "the order of a group's lines decides
+# positions and nothing else"; ch. 8, "A new place's first value": the query answers at
+# the build, by the element as built; Type System ch. 2, "Bundles": a bundle is a plain
+# aggregate, so a name binds it and a function takes it; ruling TC). Nothing here is a
+# cycle. Reaches `PreBindWhole`'s marker "the bundle `both`, whose plain part is late,
+# read as one value at its block's build" on prismc-s4 (sweep-4's bootstrap of 076ee06b).
+# Written by Claude (sweep-4, the prismc run), 12 November 2026; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+tag Pad.Port of Element ((Nat, $Text)):
+    name: Text
+
+First: fn ((Nat, !Click)) -> Nat
+fn First ((k, ignore)) = k
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    !add <- Ui.Button($label=$"add")                                   # 0
+    ((p, $s)) <- Pad.Port(name="port {First both}")                    # 1
+    Ui.Label($text=$"{p} {$s}")                                        # 2
+    both <- if loud:
+        Ui.Label($text=$"loud")                                        # 3
+        @ ((10, !add))
+    else:
+        @ ((20, !add))

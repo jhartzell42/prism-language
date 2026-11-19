@@ -1,0 +1,9 @@
+# The tests of sem-ch08-clause-dynamic-through-parent.
+emit Ui.*
+use App.*
+
+test rows_read_the_blocks_hold, @page:
+    build
+    click at 0
+        => expect Ui.Label(text="big 1")
+        => expect Ui.Label(text="1")

@@ -1,0 +1,13 @@
+# Derived by hand (Type System ch. 4: a dynamic at a tag's plain field lifts the construction): the square follows `$n` in the tick of the click.
+test lifted_tag
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1: Ui.Label(text="4")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="9")

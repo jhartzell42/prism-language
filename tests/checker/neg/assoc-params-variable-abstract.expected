@@ -1,0 +1,4 @@
+tests/checker/neg/assoc-params-variable-abstract.prism:27: error[mismatch]: expected `Out Kettle m`, found `Text`
+    fn Built kettle, out = "warm"
+                           ^^^^^^
+1 error

@@ -1,0 +1,9 @@
+# The tests of sem-ch08-widget-recursion-event-parameter-read-as-value.
+emit Ui.*
+use App.*
+
+test three_levels_hand_the_event_on, @main:
+    build
+        => expect Ui.Label(text="after")
+    click at 0
+        => expect Ui.Label(text="end: 1")

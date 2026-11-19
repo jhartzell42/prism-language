@@ -1,0 +1,6 @@
+# The tests of doc-role-generic-function-at-a-concrete-document.
+emit Ui.*
+use App.*
+
+test a_players_step, @page:
+    build

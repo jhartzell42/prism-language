@@ -1,0 +1,30 @@
+# Every NaN is one value under `==`, `^Ord` and as a map key (Type System round 6, ruling
+# NO): `0.0 / 0.0`, its negation and a NaN carried through arithmetic are equal and order
+# Equal, whatever bits the hardware or the compiler gave each; a NaN sorts after every
+# number, infinity included; `0.0` and `-0.0` still differ (ruling FB). Arithmetic stays
+# IEEE. Written for prismc's back ends; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+let nan = 0.0 / 0.0
+let negNan = -nan
+let carried = nan + 1.0
+let inf = 1.0 / 0.0
+let m = Map [[((nan, "nan")), ((0.0, "zero"))]]
+
+Yes: fn Bool -> Text
+fn Yes True = "T"
+fn Yes False = "F"
+
+Ord: fn Ordering -> Text
+fn Ord Less = "L"
+fn Ord Equal = "E"
+fn Ord Greater = "G"
+
+@nans: @unit
+@nans:
+    Ui.Label($text=$"{Yes nan == negNan} {Yes nan == carried} {Yes negNan != carried} {Ord (Compare nan, negNan)} {Ord (Compare negNan, carried)}")  # 0
+    Ui.Label($text=$"{Ord (Compare nan, inf)} {Ord (Compare negNan, inf)} {Ord (Compare negNan, -inf)} {Yes negNan < 0.0}")  # 1
+    Ui.Label($text=$"{Size m} {Or (?Get m, negNan), "missing"} {Or (?Get m, carried), "missing"} {Or (?Get m, -0.0), "missing"}")  # 2
+    Ui.Label($text=$"{Yes [[nan]] == [[negNan]]} {Yes (0.0 == -0.0)}")  # 3

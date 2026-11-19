@@ -1,0 +1,10 @@
+# `distinct-needs-eq`: `@Distinct` compares the values it is given, so its dynamic's type
+# must have `^Eq`.
+emit Ui.*
+type Opaque = Opaque Nat
+
+@seen: @unit
+@seen:
+    !go <- @started
+    $o <- Opaque 1 then (Opaque 2) on !go
+    $d <- @Distinct $o

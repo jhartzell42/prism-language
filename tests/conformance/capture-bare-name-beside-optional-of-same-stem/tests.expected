@@ -1,0 +1,6 @@
+# Derived by hand: `Down` gives its argument back, the fold sums 1 + 2 + 3 = 6, and `?w` is the first, 1.
+test it_counts
+
+tick 0
+  added:
+    0: Ui.Label(text="7")

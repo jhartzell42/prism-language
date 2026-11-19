@@ -1,0 +1,9 @@
+# `A`, a top-level module of the library; it and `B` use each other.
+emit r
+use B
+
+Inc: fn Nat -> Nat
+fn Inc n = n + 1
+
+Both: fn Nat -> Nat
+fn Both n = B.Dec (Inc n)

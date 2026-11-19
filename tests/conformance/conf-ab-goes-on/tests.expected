@@ -1,0 +1,44 @@
+# Derived by hand from Conformance AB (a tick that aborts leaves the state as it was before the tick, and the World goes on) and the counter's rule: the wrong answer to the button is no click, so its tick aborts, and the next click counts from 1 to 2; a job pending across an aborted tick takes its four cycles (D6) in the ticks after it.
+test the_world_goes_on_after_an_abort
+
+tick 0
+  added:
+    0: Ui.Button(label="Increment")
+    1: Ui.Label(text="Count: 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="Count: 1")
+
+tick 2
+  in:
+    0: "oops"
+  aborted
+  | Runtime.Answer: expected a Click, got "oops"
+
+tick 3
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="Count: 2")
+
+test a_job_goes_on_after_an_abort
+
+tick 0
+  added:
+    0: Ui.Button(label="poke")
+    2: Ui.Label(text="working")
+
+tick 1
+  in:
+    0: "oops"
+  aborted
+  | Runtime.Answer: expected a Click, got "oops"
+
+compute until idle: 4 ticks, 2 to 5
+
+tick 5
+  changed:
+    2: Ui.Label(text="7")

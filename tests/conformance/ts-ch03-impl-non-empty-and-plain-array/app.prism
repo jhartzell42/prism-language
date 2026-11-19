@@ -1,0 +1,24 @@
+# One trait with an impl for `[a]+` and an impl for `[a]`: each call asks the impl of its
+# argument's own type (Type System ch. 2, "Collections": `[a]+` is non-empty, and fills a
+# place already known to want an `[a]`, the one implicit conversion, with no subtyping;
+# ch. 3: an impl is chosen by the type). `xs as [a]` drops the promise, so the value it
+# gives asks the `[a]` impl.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Named a:
+    Name: fn a -> Text
+
+impl ^Named [a]:
+    fn Name xs = "plain {Len xs}"
+
+impl ^Named [a]+:
+    fn Name xs = "non-empty {Len xs}"
+
+@main: @unit
+@main:
+    let some = [[1, 2]]+
+    let plain = [[1, 2, 3]]
+    let dropped = some as [Nat]
+    Ui.Label($text=$"{Name some}, {Name plain}, {Name dropped}, {Name [[7]]+}")    # 0

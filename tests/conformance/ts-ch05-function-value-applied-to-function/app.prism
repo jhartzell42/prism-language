@@ -1,0 +1,18 @@
+# A function value a `let` names, applied to a lambda and to a named function (Type
+# System ch. 5: a function is a value, and so is its argument; a bounded function is
+# called at once). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Double: fn Nat -> Nat
+fn Double n = n * 2
+
+Through: fn Nat -> Nat
+fn Through k:
+    let Take = \|G| (G 1) + 2
+    (Take (\|n| n * k)) + (Take Double)
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Through 5}")                               # 0

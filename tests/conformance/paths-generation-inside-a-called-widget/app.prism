@@ -1,0 +1,19 @@
+# Ruling PL (Jimmy, 15 November): a `rebuild` in a called widget extends that widget's own
+# list with its position, its generation and its row's places (`1/0.#0.0`); a click names
+# the path in the same spelling. Expected transcript derived by hand.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Gen: fn $Nat -> @unit
+fn @Gen $n:
+    rebuild $n:
+        !hit <- Ui.Button($label=$"hit {_}")          # 0.#g.0
+        Ui.Label($text=$"gen {_}")                    # 0.#g.1
+
+@page: @unit
+@page:
+    !go <- Ui.Button($label=$"go")                    # 0
+    $n <- 0 then $n + 1 on !go
+    @Gen $n                                           # 1/0.#g.0 and 1/0.#g.1

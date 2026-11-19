@@ -1,0 +1,8 @@
+# Audited: one tuple, so one sum.
+# The tests of ts-ch04-dynamic-in-a-tuple (Type System chapter 4).
+emit Ui.*
+use App.*
+
+test a_dynamic_in_a_tuple, @Shown 3:
+    build
+        => expect Ui.Label(text="1")

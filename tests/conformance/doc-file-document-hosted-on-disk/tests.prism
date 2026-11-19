@@ -1,0 +1,8 @@
+# The tests of doc-file-document-hosted-on-disk.
+emit Ui.* | Fs.*
+use App.*
+use Fs.*
+
+test the_editor_reads_the_file, @page:
+    with Fs.Contents(path="notes") = ~ Contents(text="hello"), build
+        => expect Ui.Label(text="ada reads hello")

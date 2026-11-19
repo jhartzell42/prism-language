@@ -1,0 +1,4 @@
+tests/checker/neg/regex-flags-second-dash.prism:2: error[regex]: a second - in a flag group
+    let r = %/(?i-m-s)/
+                   ^
+1 error

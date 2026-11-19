@@ -1,0 +1,4 @@
+tests/checker/neg/regex-class-range-set.prism:2: error[regex]: a range end that is a class
+    let r = %/[a-\d]/
+                 ^
+1 error

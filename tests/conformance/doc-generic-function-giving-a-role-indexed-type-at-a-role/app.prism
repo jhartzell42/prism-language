@@ -1,0 +1,42 @@
+# A generic function over a document and a role that gives a role-indexed associated type
+# (`!LeavesAt: forall d (r: Role d). fn Path, Elem (..) -> !(SeatId d r)`, the library's,
+# over its event), called at a document and a role whose equation decides that type, its
+# result used at that type. Isolated from tests/documents/tally, whose crate wrote
+# `leaves_at_e` to give `Event<Pod>` and its caller to take `Event<Text>` (rustc E0308:
+# mismatched types).
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type SeatId (r: Role d)
+    SeatOf: forall (r: Role d). fn Fixed r, Nat -> SeatId d r
+
+!SeatsOf: forall d (r: Role d). fn Fixed r, !Nat -> !(SeatId d r) where d: ^Document
+fn !SeatsOf role, !n = SeatOf<<d>> role, !n
+
+Plain: forall d (r: Role d). fn Fixed r, Nat -> SeatId d r where d: ^Document
+fn Plain role, n = SeatOf<<d>> role, n
+
+type TallyRole = choice:
+    Teller
+    Keeper
+derive ^Eq, ^Ord, ^Debug
+
+type Board = choice:
+    Board
+
+impl ^Document Board:
+    type Role = TallyRole
+    type SeatId Teller = Text
+    type SeatId Keeper = Nat
+    fn SeatOf Fixed<<Teller>>, n = "teller {n}"
+    fn SeatOf Fixed<<Keeper>>, n = n * 10
+
+@page: @unit
+@page:
+    !next <- Ui.Button($label=$"next")                                     # 0
+    $count <- 0 then $count + 1 on !next
+    $seat <- "none" then !SeatsOf<<Board, Teller>> Fixed<<Teller>>, ($count + 1 on !next)
+    Ui.Label($text=$"{$seat}; keeper {Plain<<Board, Keeper>> Fixed<<Keeper>>, 4}")      # 1

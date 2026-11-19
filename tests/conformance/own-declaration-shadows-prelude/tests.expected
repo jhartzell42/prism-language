@@ -1,0 +1,6 @@
+# Derived by hand: three words; the prelude counts three characters.
+test own_len_wins
+
+tick 0
+  added:
+    0: Ui.Label(text="3 3")

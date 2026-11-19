@@ -1,0 +1,18 @@
+# `may-not-end`: a function's result counts as within its argument only when every arm's
+# result is, read with that arm's own bindings. `Pick`'s `Leaf` arm returns its own `l`, a
+# bigger tree than it was given, so `Pick a` is not smaller than `t`, and `Walk` loops
+# forever on `Node (Leaf 0), (Leaf 0)`.
+type Tree = choice:
+    Leaf Nat
+    Node Tree, Tree
+
+Pick: fn Tree -> Tree
+fn Pick t = match t:
+    Node l, r: l
+    Leaf n:
+        let l = Node t, t
+        l
+
+Walk: fn Tree -> Nat
+fn Walk (Leaf n) = n
+fn Walk (Node a, b) = Walk (Pick a)

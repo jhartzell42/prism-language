@@ -1,0 +1,6 @@
+# Derived by hand: the impl shouts `L` and the value; `Yell` adds `!`.
+test trait_and_type_one_name
+
+tick 0
+  added:
+    0: Ui.Label(text="L1 L2!")

@@ -1,0 +1,19 @@
+# A `let` of a record pattern in a widget block that binds a dynamic inside it (Semantics
+# ch. 4: a `let` binds a pattern that cannot fail; Type System ch. 2: a record's field may
+# be a dynamic, and the pattern's `$l` names that dynamic). `$l` follows `$n`, the dynamic
+# the record was made with.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Gauge = record:
+    $level: Nat
+    name: Text
+
+@page: @unit
+@page:
+    !go <- Ui.Button($label=$"go")                               # 0
+    $n <- 0 then $n + 1 on !go
+    let Gauge($level=$l, name=nm) = Gauge($level=$n, name="tank")
+    Ui.Label($text=$"{nm} at {$l}")                              # 1

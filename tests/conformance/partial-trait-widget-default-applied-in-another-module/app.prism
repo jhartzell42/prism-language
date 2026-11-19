@@ -1,0 +1,20 @@
+# A trait's widget method left to its default, given its type arguments and part of its
+# arguments in the root (`@Started<<Count>> empty`), applied to the rest by a widget of
+# another module (`@Given`'s `Make 7`): the impl comes from the given arguments' types
+# where they were written, in the root. Found by the p19 run on the tally
+# (`@HostDocument (@InMemory<<Tallied OneEach>> empty), seats`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+mod Framing
+test mod Tests
+use Framing.*
+
+type Count = record:
+    total: Nat
+
+impl ^Document Count:
+    type State = Nat
+
+@page: @unit
+@page:
+    @Given (@Started<<Count>> 0)

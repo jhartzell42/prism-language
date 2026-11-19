@@ -1,0 +1,3 @@
+# A main file with a `module` line: refused (module-line); the path names the module.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+mod Sub

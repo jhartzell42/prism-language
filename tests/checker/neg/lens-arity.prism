@@ -1,0 +1,6 @@
+# `lens-arity`: a lens takes one reference.
+type Regs = record:
+    acc: Int
+    x: Int
+
+&Pick: fn &Regs, &Regs -> &Int

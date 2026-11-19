@@ -1,0 +1,27 @@
+# A code template's placeholder is `<<expr>>`, and `<<` alone on a line through `>>` alone
+# on a line is a brace block (Jimmy's ruling, 12 November: every literal gets a doubled
+# bracket, single braces mean hold, and a template's placeholder matches the `<` and `>`
+# of `<@Name ...>`). `\<` writes a `<` and `\\` a backslash; any other backslash is text.
+# A `>>` closes a placeholder only while one is open, so `Vec<Vec<T>>` outside one is
+# text, and `Job\<<<ty>>>` is `Job<`, the placeholder, and `>`. Explicit type arguments
+# inside a placeholder nest by bracket pairing (`<<Count<<Nat>> xs>>`).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Count: fn [a] -> Nat
+fn Count xs = Len xs
+
+Code: fn Text, Nat -> Text
+fn Code ty, n = inline_text <rust>
+let v: Vec<Vec\<<<ty>>>> = Job\<<<ty>>>::new(<<n>>, <<Count<<Nat>> [[n, n]]>>); a>>b \<< "a\\b\n"
+<<
+let doubled = n * 2
+"[{doubled}]"
+>>
+</rust>
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Len (Code "Nat", 3)}")       # 0

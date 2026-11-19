@@ -1,0 +1,11 @@
+# The tests of sem-ch08-widget-bundle-argument-written-in-place. No transcript yet: red
+# at cargo; the checks below are from Semantics ch. 7, R2 (`($n + 1) on !go` fires with
+# the opening value plus one).
+emit Ui.*
+use App.*
+
+test the_bundle_reaches_the_widget, @page:
+    build
+        => expect Ui.Label(text="0 0")
+    click Ui.Button(label="go")
+        => expect Ui.Label(text="1 1")

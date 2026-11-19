@@ -1,0 +1,14 @@
+# `lens-arity`: a lens takes its one reference and nothing else (Semantics ch. 5,
+# "References and lens paths": "A named lens takes `&` on its name and its one
+# parameter"; appendix A.6, `ref ::= .. | "&" uname ref`, has no place for a second
+# argument). Written by Claude on the claude-lowering branch; subject to change.
+type Regs = record:
+    acc: Int
+    x: Int
+
+type Vm = record:
+    pc: Nat
+    regs: Regs
+
+&Register: fn &Vm, Bool -> &Int
+fn &Register &vm, spare = &vm.regs.acc

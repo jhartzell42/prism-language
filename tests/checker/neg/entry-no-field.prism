@@ -1,0 +1,26 @@
+# An `Entry` has no fields (Jimmy's ruling on map entries, 12 November): a path through a
+# map's key to a field of the value stored there is an ordinary type error, the same in a
+# named lens and in an `update` block, read or set. A field of a stored value is changed
+# by reading the value, changing it, and putting it back, as `Promote` does.
+# Written by Claude on the claude-lowering branch; subject to change.
+type Piece = record:
+    color: Int
+    rank: Int
+derive ^Eq
+
+type Game = record:
+    board: (Int ==> Piece)
+    turn: Int
+
+&Color: fn &Game -> &Int
+fn &Color &game = &game.board[1].color
+
+Paint: fn Game, Int -> Game
+fn Paint game, c = update game:
+    &_.board[2].color <= c
+    &_.turn <= &_.board[3].rank
+
+Promote: fn Game -> Game
+fn Promote game = update game:
+    if ? piece <- &_.board[2]:
+        &_.board[2] <: ? Piece(color=piece.color, rank=piece.rank + 1)

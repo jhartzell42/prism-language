@@ -1,0 +1,14 @@
+# The tests of sem-ch09-host-bundle-two-dynamics-answer.
+emit Ui.* | Pad.*
+use App.*
+
+test two_dynamic_parts_answered, @mocked:
+    build
+        => expect Ui.Label(text="idle, 0 peers")
+    click at 0
+        => expect Ui.Label(text="idle, 0 peers")
+    compute
+        => expect Ui.Label(text="busy, 1 peers")
+    click at 0
+    compute
+        => expect Ui.Label(text="busy, 2 peers")

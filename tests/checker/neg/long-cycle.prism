@@ -1,0 +1,66 @@
+# `may-not-end`: the size-change closure runs to its fixed point (pick SM). Sixteen
+# functions pass `k` around a ring unchanged, so the graph that shows the cycle needs
+# sixteen compositions, past the twelve rounds the closure once stopped at; `Count0` to
+# `Count3` count `k` down on one step of their ring, and check clean.
+
+Ring0: fn Nat -> Nat
+fn Ring0 k = Ring1 k
+
+Ring1: fn Nat -> Nat
+fn Ring1 k = Ring2 k
+
+Ring2: fn Nat -> Nat
+fn Ring2 k = Ring3 k
+
+Ring3: fn Nat -> Nat
+fn Ring3 k = Ring4 k
+
+Ring4: fn Nat -> Nat
+fn Ring4 k = Ring5 k
+
+Ring5: fn Nat -> Nat
+fn Ring5 k = Ring6 k
+
+Ring6: fn Nat -> Nat
+fn Ring6 k = Ring7 k
+
+Ring7: fn Nat -> Nat
+fn Ring7 k = Ring8 k
+
+Ring8: fn Nat -> Nat
+fn Ring8 k = Ring9 k
+
+Ring9: fn Nat -> Nat
+fn Ring9 k = Ring10 k
+
+Ring10: fn Nat -> Nat
+fn Ring10 k = Ring11 k
+
+Ring11: fn Nat -> Nat
+fn Ring11 k = Ring12 k
+
+Ring12: fn Nat -> Nat
+fn Ring12 k = Ring13 k
+
+Ring13: fn Nat -> Nat
+fn Ring13 k = Ring14 k
+
+Ring14: fn Nat -> Nat
+fn Ring14 k = Ring15 k
+
+Ring15: fn Nat -> Nat
+fn Ring15 k = Ring0 k
+
+Count0: fn Nat -> Nat
+fn Count0 k = Count1 k
+
+Count1: fn Nat -> Nat
+fn Count1 k = Count2 k
+
+Count2: fn Nat -> Nat
+fn Count2 k = Count3 k
+
+Count3: fn Nat -> Nat
+fn Count3 k = match k -? 1:
+    nil: 0
+    ? m: Count0 m

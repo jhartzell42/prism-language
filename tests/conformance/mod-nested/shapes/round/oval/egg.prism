@@ -1,0 +1,7 @@
+# `Shapes.Round.Oval.Egg`: a file at depth 4, using a module two levels up and its parent.
+emit r
+use Shapes.Round.Circle.*
+use Shapes.Round.Oval
+
+Yolk: fn Nat -> Nat
+fn Yolk n = (Area n) + (Shapes.Round.Oval.Width n, 1)

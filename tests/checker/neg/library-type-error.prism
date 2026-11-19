@@ -1,0 +1,8 @@
+# args: --prelude tests/checker/library-broken
+# A type error in a standard-library module is an error of every program, naming the
+# module, even of a program that never uses it (Jimmy, 12 November: the standard library
+# always compiles). Its library is tests/checker/library-broken, whose `Broken` gives a
+# `Nat` where it promises a `Text`.
+# Written by Claude on the claude-lowering branch; subject to change.
+One: fn Nat -> Nat
+fn One n = n

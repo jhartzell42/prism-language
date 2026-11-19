@@ -1,0 +1,12 @@
+# The tests of sem-ch09-host-dynamic-answer-call.
+emit Ui.* | Fs.*
+use App.*
+use Fs.*
+
+test a_call_result_answers, @host:
+    build
+        => expect Ui.Label(text="first!")
+    click at 0
+        => expect Ui.Label(text="first!")
+    compute
+        => expect Ui.Label(text="second!")

@@ -1,0 +1,10 @@
+# `borrow-overlap`: a path lent to a `for` is not set inside it (Semantics ch. 5).
+type Fixture = record:
+    stoppage: [Nat]
+    home: Nat
+
+Clear: fn Fixture -> Fixture
+fn Clear f = update f:
+    for &s <- &_.stoppage:
+        &s += 1
+        &_.stoppage <= [[]]

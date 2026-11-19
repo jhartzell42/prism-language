@@ -1,0 +1,17 @@
+emit r
+
+type WatchRole = choice:
+    Writer
+    Viewer
+
+trait ^Watched d:
+    type Role
+    type Told (r: Role d)
+
+type Watching = record:
+    n: Nat
+
+impl ^Watched Watching:
+    type Role = WatchRole
+    type Told Writer = Text
+    type Told Viewer = Nat

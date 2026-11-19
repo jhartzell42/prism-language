@@ -1,0 +1,6 @@
+# The tests of sem-ch08-for-over-blueprints.
+emit Ui.*
+use App.*
+
+test each_row_builds_its_blueprint, @main:
+    build

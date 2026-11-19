@@ -1,0 +1,6 @@
+# The tests of own-declaration-shadows-prelude.
+emit Ui.*
+use App.*
+
+test own_len_wins, @page:
+    build

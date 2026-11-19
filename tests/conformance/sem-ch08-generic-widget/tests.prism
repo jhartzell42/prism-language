@@ -1,0 +1,8 @@
+# The tests of sem-ch08-generic-widget (Semantics chapter 8).
+emit Ui.*
+use App.*
+use Ui.*
+
+test generic_widget, @main:
+    build
+    click at 0

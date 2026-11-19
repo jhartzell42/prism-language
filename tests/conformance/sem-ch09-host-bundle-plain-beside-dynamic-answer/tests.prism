@@ -1,0 +1,10 @@
+# The tests of sem-ch09-host-bundle-plain-beside-dynamic-answer.
+emit Ui.* | Pad.*
+use App.*
+
+test plain_and_dynamic_parts_answered, @mocked:
+    build
+        => expect Ui.Label(text="port 7: idle")
+    click at 0
+    compute
+        => expect Ui.Label(text="port 7: busy")

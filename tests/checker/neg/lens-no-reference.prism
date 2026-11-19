@@ -1,0 +1,13 @@
+# `lens-arity`: a lens takes one reference (Semantics ch. 5, "The borrow rule": "a lens
+# takes exactly one `&` parameter"), so one that takes none is refused.
+# Written by Claude on the claude-lowering branch; subject to change.
+type Regs = record:
+    acc: Int
+    x: Int
+
+type Vm = record:
+    pc: Nat
+    regs: Regs
+
+&Acc: fn Vm -> &Int
+fn &Acc vm = 0

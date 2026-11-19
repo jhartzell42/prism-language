@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 2, "Collections": the non-empty literals fill `[Nat]` and `Nat ==> Text` places as they are; the checked casts give `nil` for the empty ones and the collection for the others.
+test non_empty
+
+tick 0
+  added:
+    0: Ui.Label(text="6 2 none 6 no keys 2 3")

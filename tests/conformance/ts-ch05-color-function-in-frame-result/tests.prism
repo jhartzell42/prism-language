@@ -1,0 +1,7 @@
+# The tests of ts-ch05-color-function-in-frame-result.
+emit Ui.*
+use App.*
+
+test it_runs, @page:
+    build
+    compute

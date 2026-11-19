@@ -1,0 +1,17 @@
+# Derived by hand from Semantics ch. 8 (a widget application is transparent; `@Element e` is a place of the block; "A new place's first value": a plain output is the place's first value, at its build) and ch. 4 (lines numbered in order): the first call builds 0 and 1, the second 2 and 3.
+# Paths under ruling PL (claude/paths-as-lists.md): each `@Asked`'s places stand in its own list, the element statement at `/0` and the label at `/1`.
+test both_outputs_come_back
+
+tick 0
+  added:
+    0/0: Pad.Num(name="n")
+    0/1: Ui.Label(text="num")
+    1/0: Ui.Button(label="go")
+    1/1: Ui.Label(text="button")
+    2: Ui.Label(text="7, 0 clicks")
+
+tick 1
+  in:
+    1/0: click
+  changed:
+    2: Ui.Label(text="7, 1 clicks")

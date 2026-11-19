@@ -1,0 +1,135 @@
+# To do, for Jimmy
+
+*Written by Claude on the claude-self-hosting branch; subject to change. Jimmy's list, to
+reform as he likes; Claude's own list is `claude/handoff.md`. Every path here is in the
+tree as it stands.*
+
+## Things to try
+
+- **Bootstrap from nothing:** `make bootstrap` on a fresh clone (`bootstrap/bootstrap.sh`:
+  the seed `bootstrap/prismc-rust.tar.xz`, cargo, a fixed point installed as
+  `target/bootstrap/prismc`), then `make test`
+  (bootstrap/bootstrap.sh's header).
+- **Chess:** `./prism run examples/basic-chess` (or `make basic-chess`; Rust, the winit
+  canvas World). `./prism test examples/basic-chess` runs its test modules under the Test
+  World (examples/basic-chess/README.md).
+- **The benchmarks:** `bench/building/run.sh` (how long Prism takes to build), then
+  `bench/running/run.sh` (how fast it runs, prismc on itself and the GUI table), each
+  writing a `RESULTS.md` beside itself; `bench/gui/run.sh` times the table alone
+  (each script's header). `make -C bench/gui/prism` builds the table's
+  driver and `bench/gui/prism/check.sh` prints what each operation costs by phase. The
+  driver runs one operation; to click through the table yourself, run its root under
+  the canvas World the way the Makefile compiles it, `./prism run bench/gui/prism
+  examples/basic-chess/basic_window` (unrun here).
+- **Break the compiler on purpose:** edit a module under `prismc/` (`prismc/syntax/lexer/`,
+  `prismc/syntax/parser/`, `prismc/check/`, `prismc/lower/`, `prismc/emit/rust/`), run `make rebuild`, and watch the fixed point refuse or the suites
+  fail; `tests/compiled/run.sh NAME` runs one program (`tests/compiled/run.sh chess`).
+- **Write a new example** as a tree under `examples/` (claude/modules-style-pass.md): a
+  directory with its root `app.prism`, a `test mod Tests` in `tests.prism` beside it and
+  its transcript `tests.expected`, as `tests/conformance/counter/` is laid out; run it with
+  `./prism test examples/NAME`, and add it to `tests/compiled/run.sh` to
+  pin it.
+- **TODO: jemalloc for the Rust target**. The Rust programs
+  run on the system allocator. jemalloc took the Rust prismc's self-compile from 69.9 s to
+  51.6 s on the Linux VM (claude/benchmarks-preliminary.md, "jemalloc (Rust)"), but
+  through `tikv-jemallocator`, which compiles jemalloc's C sources on every clean build
+  (chess's clean Rust build 73 s → 128 s there). Linking the system's jemalloc would keep the speed without the build: the
+  `tikv-jemalloc-sys` crate's system-library mode (or a few lines of `#[link]` and a
+  `GlobalAlloc` over `mallocx`), the `#[global_allocator]` line back in the emitted
+  `main.rs` (prismc/emit/rust/templates/mod.prism; commit `10211d6` has it), and a
+  hard error when jemalloc is missing.
+- **TODO: recursion past the stack** (prismc/README.md, IB3 and pick BS). Bounded functions
+  recurse on the machine stack (1 GB in Rust), so a walk of a structure
+  millions deep overflows it: Rust prints "thread has overflowed its stack" and aborts.
+  Unbounded functions are not affected (each call is a cycle point with a heap
+  frame). Left as it is; a depth limit is the same mechanism as gas (a counter threaded
+  through calls, in a register), which Jimmy plans to design.
+
+## Making the code yours
+
+Claude's commits carry the trailer `Co-Authored-By: Claude ...` (those from the cloud are
+authored `Claude` too; those from the Mac are authored by you), so the trailer, not the
+author, says which lines are Claude's:
+
+```
+git log --format=%H --grep='Co-Authored-By: Claude' > /tmp/claude-commits
+git blame --line-porcelain FILE | grep -E '^[0-9a-f]{40} ' | cut -d' ' -f1 | grep -cFf /tmp/claude-commits
+```
+
+counts the lines of `FILE` that a Claude commit last touched. A path that keeps the tests
+green at every step:
+
+1. **Start where the tests are thickest:** `prismc/syntax/lexer/` and
+   `prismc/syntax/parser/` (their test modules, `tests.prism` with `tests.expected`, pin
+   them, and `tests/compiled/run.sh` runs them), then the checker, `prismc/check/`
+   (`tests/checker/run.sh`: every corpus program clean, every `tests/checker/neg/` program
+   its `.expected` diagnostic).
+2. **Then lowering and the printer** (`prismc/lower/`, `prismc/emit/rust/`,
+   the templates under `emit/rust/templates/`): the fixed point and
+   the compiled suite (`tests/compiled/run.sh`) catch any change in
+   behavior. Rewrite a function at a time; `make rebuild` after
+   each batch.
+3. **Then the runtime and the Worlds** (`runtime/rust`, `worlds/cli`,
+   `worlds/canvas`): their unit tests (`cargo test --workspace`), then the compiled suite over them.
+4. **Then the scripts and the prose:** `prism`, `Makefile`, `bootstrap/`,
+   `tests/*/run.sh`, `bench/*/run.sh`, every README and `claude/`.
+5. **Last, the seed:** `make bootstrap-update` from your
+   own compiler, so `bootstrap/prismc-rust.tar.xz` is
+   yours too.
+
+## A shell World
+
+Replace the `prism` shell script (and in time `bootstrap/bootstrap.sh`,
+`tests/*/run.sh`, `bench/*/run.sh`) with Prism: a World for
+coordinating Unix processes, so that a Prism program reads like a shell script.
+
+- Tags for running a process (argv, environment, working directory; its exit code,
+  standard output and error as answers), pipes between processes, files, and timing.
+- A program's holds and `for` rows as the script's state and its parallel jobs: a build
+  of N modules is a `for` over them, each row a process.
+- The shell World's own policy on failure (the `set -e` question), as a wrapper like
+  `Prelude.Unwrap`.
+- A `#!` line: `prism run` with a cache, so a script starts as fast as a shell's.
+- Then `prism` itself as a Prism script under this World, compiled by prismc.
+
+## A design round: owed ticks after the prompt check
+
+Jimmy: "If anything use this to get rid of delay ticks." The checker refuses every prompt
+cycle through a structural dynamic, a host's `$doc` and a `for`'s or `rebuild`'s
+gathered result alike, without knowing which dynamics are structural. Claude's proposal,
+for a round before any code:
+
+- **The guarantee:** nothing that reads a structural dynamic feeds back into the
+  propagation that produced it in the same tick.
+- **What it allows:** after construction in tick n, a second propagation over only the
+  readers of structural dynamics, in the same tick, from the snapshot taken at the end of
+  construction. Readers see one consistent state (DV2 stays met), and tick n's patch
+  holds their results, with no owed tick.
+- **Where a tick is still owed:** a structural read that reaches construction again (a
+  `rebuild` or `for` whose key or arm depends on `$doc`).
+- **Cost:** the viewer's lag (VL) and chess's owed ticks per move shrink; the transcripts
+  pinning today's owed ticks change; the runtimes gain a second phase per tick.
+
+## A design round: hosting delay (HO) and promptness (PT)
+
+Jimmy, 14 November: "HO is a good ruling! … This is an undercooked problem." The prompt
+check (ruling PT) and the hosting delay (ruling HO, Language ch. 6, "Tick by tick") meet
+in a few places nobody has designed together:
+
+- **What prismc does now:** a place's answer is no prompt edge to its fields
+  (`!a <- Count.Ask(!by=!a)` is feedback through a tick), and a lambda given to a function
+  is the function's, its parameter's mark deciding, so a host's handler (unmarked in the
+  prelude) is no prompt edge of the host's line (prismc/check/passes/cycles.prism,
+  `PromptEdges`, `CapturingLambdas`).
+- **Forwarding:** `@Element e` is this tick's input. A host that forwards a guest's
+  element to an enclosing host that computes is a tick; to the World, as fast as the
+  World. Whether any chain of forwards can close a same-tick loop is unchecked.
+- **Marks that only existed because of hosts:** `Supply` is unmarked on `@HostSeats` and
+  `@HostRole`; the prompt check reads what comes off a host's element tree as prompt in
+  nothing (HC), so the tally's departures need no `@Defer`. `prompt Guests d` on the
+  implementations stays: a supplier answers from `$guests` in the same tick.
+- **Marks on parts of a result** (Claude's RM in the QG talk): PT marks a parameter for
+  the whole result; a tuple result (a host's `((a, $tree))`) could say which part fires
+  with which parameter. Nothing needs it under HO today.
+- **The owed-tick round above** (structural dynamics read in the same tick) is the same
+  question from the other side: where a tick is inserted and where it is owed.

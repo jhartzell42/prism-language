@@ -1,0 +1,7 @@
+# The tests of host-result-part-through-two-widgets-into-a-dynamic-record-field.
+emit Ui.*
+use App.*
+
+test a_teller_joins, @page:
+    build
+    click at 0

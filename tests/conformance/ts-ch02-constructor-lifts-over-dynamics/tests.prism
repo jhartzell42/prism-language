@@ -1,0 +1,11 @@
+# The constructor lifted over dynamics: declarations of ts-ch02-constructor-lifts-over-dynamics.
+emit Ui.*
+use App.*
+
+test the_pair_follows_both_dynamics, @page:
+    build
+        => expect Ui.Label(text="0:0")
+    click at 0
+        => expect Ui.Label(text="1:0")
+    click at 1
+        => expect Ui.Label(text="1:1")

@@ -1,0 +1,7 @@
+# Derived by hand from Type System ch. 4 (lifting) and Semantics ch. 4: `$k` is 0 at the build, so `$G` adds 0 and `$h` is 2. Never run: prismc refuses the program.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Button(label="inc")
+    1: Ui.Label(text="2")

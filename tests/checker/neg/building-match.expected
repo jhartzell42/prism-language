@@ -1,0 +1,5 @@
+tests/checker/neg/building-match.prism:8: error[building-match]: a blueprint in a match over a dynamic; use `rebuild`
+        if $lit: Ui.Label($text=$"on")
+           ^^^^
+  fix: write `rebuild` over the condition, with `if _:` inside
+1 error

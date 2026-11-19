@@ -1,0 +1,14 @@
+# The trait and the applier of partial-trait-widget-default-applied-in-another-module
+# (the root says why). Written by Claude on the claude-self-hosting branch; subject to
+# change.
+emit Ui.*
+
+trait ^Document d:
+    type State
+    @Started: fn State d, Nat -> @unit emit Ui.*
+    fn @Started state, n:
+        Ui.Label($text=$"started at {n}")                                       # 0
+
+@Given: fn (fn Nat -> @unit emit Ui.*) -> @unit emit Ui.*
+fn @Given Make:
+    Make 7

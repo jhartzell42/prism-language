@@ -1,0 +1,11 @@
+# Derived by hand from Semantics ch. 8 (a blueprint parameter is built where the widget applies it; a widget of several clauses is chosen by its plain arguments and is transparent) and the rulings since the Bible, TC (places are counted as they are built). Under ruling PL the local blueprint `@line`, applied as `@w`, opens one list, as `@Five` does (`1/1/0`).
+test a_clause_builds_its_blueprint
+
+tick 0
+  added:
+    0/0: Ui.Label(text="shown")
+    0/1/0: Ui.Label(text="five")
+    1/0: Ui.Label(text="shown")
+    1/1/0: Ui.Label(text="line 7")
+    2/0: Ui.Label(text="hidden")
+    3: Ui.Label(text="end")

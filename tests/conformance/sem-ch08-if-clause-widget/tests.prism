@@ -1,0 +1,15 @@
+# The building `if`'s tests.
+emit Ui.*
+use App.*
+
+test the_shouting_clause, @Pick (Shout "hi"):
+    build
+        => expect Ui.Label(text="hi!")
+
+test the_quiet_clause, @Pick Quiet:
+    build
+        => expect Ui.Label(text="...")
+
+test the_other_arm, @Pick Off:
+    build
+        => expect Ui.Label(text="off")

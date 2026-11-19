@@ -1,0 +1,32 @@
+# Derived by hand from Semantics ch. 2, Regular expressions, and Appendix B: each example's match spans by leftmost-first search (`yes` takes `yes` after `y` fails at `$`; `host` stops at the first `/` after the host); a literal prints as the plain form, a bare `/` written `\/` (Type System ch. 2, RX-EQ); after the closing slash a terminator makes the letters flags, a `/` makes them a letters-only replacement (`%/a//` deletes), any other character after no letters begins a replacement, and in the hashed form letters before a space begin one that runs to the next `/#`.
+check examples
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+
+check forms
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok
+9: ok
+10: ok
+11: ok
+
+check lookahead
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok

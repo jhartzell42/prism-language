@@ -1,0 +1,13 @@
+# Derived by hand from ruling PL: the host at 0, each guest place under its key in the supplier's own list (`0.[k]/0`), the key the guest's own place, its root's positions with no list of the child's own.
+test a_child_of_several_clauses
+
+tick 0
+  added:
+    0/0.[0]/0: Ui.Label(text="yes")
+    0/0.[1]/0: Ui.Label(text="and more")
+
+test an_applied_blueprint_child
+
+tick 0
+  added:
+    0/0.[0]/0: Ui.Label(text="no")

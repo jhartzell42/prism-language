@@ -1,0 +1,20 @@
+# A color-polymorphic function that returns its function parameter inside a list, called
+# with a bounded lambda (Type System ch. 5, colors: `u fn` takes the color of each call, D8;
+# a function is a value and goes wherever a value does). `Both` gives the function twice,
+# and `Chain` applies each in turn in a bounded function.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Both: u fn (u fn Nat -> Nat) -> [u fn Nat -> Nat]
+fn Both F = [[F, F]]
+
+Chain: fn Nat -> Nat
+fn Chain k:
+    let fs = Both (\|n| n + 1)
+    Fold fs, k, \|acc, F| F acc
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Chain 5}")                                 # 0

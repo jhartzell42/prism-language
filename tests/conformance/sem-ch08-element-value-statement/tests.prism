@@ -1,0 +1,10 @@
+# The tests of sem-ch08-element-value-statement.
+emit Ui.*
+use App.*
+
+test a_let_bound_element_is_placed, @main:
+    build
+    click at 0
+        => expect Ui.Label(text="made 1")
+    click at 2
+        => expect Ui.Label(text="went 1")

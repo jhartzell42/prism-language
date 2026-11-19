@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 10 ("`~T`, `Error` and `Fault` as a row": a fault kind is a tag of the row `Fault`, and `Fault` has `^Eq`): the first error's kind is `Fs.NotFound`, the second of the two kinds is `Fs.Denied`.
+test a_fault_kind_is_a_value
+
+tick 0
+  added:
+    0: Ui.Label(text="missing 2 True 2 True")

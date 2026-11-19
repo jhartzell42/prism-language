@@ -1,0 +1,5 @@
+tests/checker/neg/impl-overlap.prism:12: error[impl-overlap]: a second impl of `^Loud` for `Pair a Text`
+    impl ^Loud (Pair a Text):
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: the first is at tests/checker/neg/impl-overlap.prism:9; keep one
+1 error

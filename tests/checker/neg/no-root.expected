@@ -1,0 +1,5 @@
+tests/checker/neg/no-root:1: error[no-root]: `tests/checker/neg/no-root` holds no app.prism, lib.prism or mod.prism, and a directory argument is a tree
+    
+    ^
+  fix: give it a root, or name its files
+1 error

@@ -1,0 +1,8 @@
+# `derive-dynamic`: a type a field of which holds a dynamic does not derive `^Eq` (doubt EQ:
+# a dynamic has no `^Eq`, so no program compares one, and the runtime alone compares a
+# dynamic, as itself).
+emit Ui.*
+type Held = record:
+    name: Text
+    level: Nat ==> $Nat
+derive ^Eq

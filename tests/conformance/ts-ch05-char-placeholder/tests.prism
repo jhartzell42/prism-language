@@ -1,0 +1,8 @@
+# A `Char` interpolated and a `Char` made a text: declarations of ts-ch05-char-placeholder.
+emit Ui.*
+use App.*
+use Ui.*
+
+test a_char_shows_and_a_text_does_not, @chars:
+    build
+        => expect Ui.Label(text="q q é'")

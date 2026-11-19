@@ -1,0 +1,5 @@
+tests/checker/neg/default-from-two-rungs.prism:20: error[ambiguous]: `Book` gets a default for `Name` from both `^Titled` and `^Labelled`
+    impl ^Named Book
+    ^^^^^^^^^^^^^^^^
+  fix: write `fn Name ...` under the impl
+1 error

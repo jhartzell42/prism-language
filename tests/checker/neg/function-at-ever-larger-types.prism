@@ -1,0 +1,7 @@
+# `grows-without-end`: a signed generic function that calls itself at `[a]` for `a`
+# has no finite set of types (ruling PG; Type System ch. 2: recursion at another type
+# needs the signature, and reaches finitely many types).
+Depth: fn [a], Nat -> Nat
+fn Depth xs, more = match more -? 1:
+    ? less: Depth [[xs]], less
+    nil: Len xs

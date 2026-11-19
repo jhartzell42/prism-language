@@ -1,0 +1,9 @@
+# `Shapes.Round.Circle`: a file at depth 3; it and `Shapes.Round.Oval` use each other.
+emit r
+use Shapes.Round.Oval.*
+
+Area: fn Nat -> Nat
+fn Area r = 3 * r * r
+
+Around: fn Nat -> Nat
+fn Around r = Width r, r

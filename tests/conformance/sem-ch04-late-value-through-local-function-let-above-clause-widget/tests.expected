@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 4 ("the order of a group's lines decides positions and nothing else"), ch. 8 (a clause is chosen by its pattern) and ruling PL (a path is a list of lists, one per widget application): loud gives `@Seven`'s 7, doubled by the local function to 14, so `@Wide` at 0 builds "one 14" and "two 14" in its own list and the `if` at 1 builds `@Seven` at its arm's 0; soft gives 20, doubled to 40, and builds nothing in its arm.
+test loud
+
+tick 0
+  added:
+    0/0: Ui.Label(text="one 14")
+    0/1: Ui.Label(text="two 14")
+    1.0/0: Ui.Label(text="seven")
+
+test soft
+
+tick 0
+  added:
+    0/0: Ui.Label(text="one 40")
+    0/1: Ui.Label(text="two 40")

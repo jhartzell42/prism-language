@@ -1,0 +1,6 @@
+# Derived by hand: Left against Left matches and narrows; Right against Left does not
+test cast
+
+tick 0
+  added:
+    0: Ui.Label(text="yes no")

@@ -1,0 +1,26 @@
+# A widget parameter passed on to another widget (Semantics ch. 8: widget function
+# applications are transparent; a blueprint is a value until `<-` or a bare line builds
+# it): `@Outer` hands its `@w` to `@Use`, which builds it. Pins the back end's guard "a
+# widget parameter read as a plain value" (lower/expr.prism) as unreached by this program.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@Use: fn @Nat -> @unit
+fn @Use @w:
+    n <- @w                                                       # 1
+    Ui.Label($text=$"got {n}")                                    # 2
+
+@Outer: fn @Nat -> @unit
+fn @Outer @w:
+    Ui.Label($text=$"outer")                                      # 0
+    @Use @w
+
+@Five: @Nat
+@Five:
+    Ui.Label($text=$"five")
+    @ 5
+
+@main: @unit
+@main:
+    @Outer @Five

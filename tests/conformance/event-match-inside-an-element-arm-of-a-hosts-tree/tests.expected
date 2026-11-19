@@ -1,0 +1,14 @@
+# Derived by hand under ruling PL and ruling HP (SM3 (a): the host is the page's 0, its primitive that list's 0, the guest's places forwarded at 0/0.[p]/0) from Semantics ch. 9 (a host's element tree holds each place's element, live; what the supplier answers takes nothing from the World, and a forwarded element goes up) and Semantics ch. 4: the write element is answered by the host and so never reaches the World; its request's text fires through the tree when save is clicked.
+test a_write_is_seen
+
+tick 0
+  added:
+    0/0.[0]/0: Ui.Button(label="save")
+    0/0.[2]/0: Ui.Label(text="writer")
+    2: Ui.Label(text="last write: nothing")
+
+tick 1
+  in:
+    0/0.[0]/0: click
+  changed:
+    2: Ui.Label(text="last write: hello")

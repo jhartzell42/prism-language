@@ -1,0 +1,13 @@
+tests/checker/neg/field-of-no-record.prism:20: error[mismatch]: `Ink` has no fields
+    fn OfRow i = i.to
+                 ^^^^
+tests/checker/neg/field-of-no-record.prism:23: error[mismatch]: `One` has no fields
+    fn OfChoice o = o.count
+                    ^^^^^^^
+tests/checker/neg/field-of-no-record.prism:26: error[mismatch]: `((Nat, Text))` has no field `first`
+    fn OfTuple t = t.first
+                   ^^^^^^^
+tests/checker/neg/field-of-no-record.prism:29: error[mismatch]: `Nat` has no fields
+    fn OfNumber n = n.size
+                    ^^^^^^
+4 errors

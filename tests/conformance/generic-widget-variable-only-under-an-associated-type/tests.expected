@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 4 and ruling PL: the widget is the page's 0 and its label its own 0; the map holds two guests.
+test counted_at_what_the_checker_solved
+
+tick 0
+  added:
+    0/0: Ui.Label(text="2 guests")

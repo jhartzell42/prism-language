@@ -1,0 +1,8 @@
+# Audited: busy 3 + 4 = 7 > 5, so `Line 7`; `Idle` shows as written.
+# The tests of ts-ch02-runtime-base-names (Type System chapter 2).
+emit Ui.*
+use App.*
+
+test program_types_named_as_the_runtimes_bases, @shown:
+    build
+        => expect Ui.Label(text="line 7 Idle Line 7")

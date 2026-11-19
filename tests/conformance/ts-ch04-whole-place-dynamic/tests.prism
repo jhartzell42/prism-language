@@ -1,0 +1,6 @@
+# The tests of ts-ch04-whole-place-dynamic.
+emit Ui.* | Pad.*
+use App.*
+
+test a_kept_dynamic_follows, @rows:
+    with Pad.Gauge(name="g") = 5, build

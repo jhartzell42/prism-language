@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 3 (`any ^Trait` packs a value with its dictionary) and ruling EX (each packed value keeps its own dictionary): two values are packed.
+test packed_numbers_are_counted
+
+tick 0
+  added:
+    0: Ui.Label(text="2 numbers")

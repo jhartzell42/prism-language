@@ -1,0 +1,9 @@
+# A plain result bound by a pattern: declarations of sem-ch08-plain-result-pattern.
+emit Ui.*
+use App.*
+
+test a_pattern_binds_the_result, @main:
+    build
+        => expect Ui.Label(text="3 4 5 deep 0")
+    click Ui.Button(label="go")
+        => expect Ui.Label(text="3 4 5 deep 3")

@@ -1,0 +1,10 @@
+# Derived by hand from Semantics Appendix B, Text: texts compare bytewise, so a shorter prefix comes first and a character orders by its UTF-8 bytes, which is its code point (Z U+5A, a U+61, z U+7A, é U+E9, 世 U+4E16, ｡ U+FF61, 😀 U+1F600: UTF-16 would put 😀's surrogates before ｡); "héllo" is greater than "hello" at its second byte, 0xC3 against 0x65.
+check order
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok

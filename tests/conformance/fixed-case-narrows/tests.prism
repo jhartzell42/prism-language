@@ -1,0 +1,6 @@
+# The tests of fixed-case-narrows.
+emit Ui.*
+use App.*
+
+test fixed_narrows, @page:
+    build

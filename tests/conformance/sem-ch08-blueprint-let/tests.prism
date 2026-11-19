@@ -1,0 +1,7 @@
+# The tests of sem-ch08-blueprint-let.
+emit Ui.*
+use App.*
+use Ui.*
+
+test a_let_bound_blueprint_is_built_where_applied, @main:
+    build

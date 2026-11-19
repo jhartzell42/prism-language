@@ -1,0 +1,8 @@
+# A generic impl's bounds: declarations of ts-ch03-generic-impl-bounds. Written by Claude
+# on the claude-bugs branch; subject to change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test a_generic_impl_uses_its_bounds, @page:
+    build

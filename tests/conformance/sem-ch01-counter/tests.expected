@@ -1,0 +1,15 @@
+# Semantics ch. 1's transcript, byte for byte, under its test's header (D13: `Count: -1`).
+test two_clicks_in_one_tick
+
+tick 0
+  added:
+    0: Ui.Button(label="Increment")
+    1: Ui.Button(label="Decrement")
+    2: Ui.Label(text="Count: 0")
+
+tick 1
+  in:
+    0: click
+    1: click
+  changed:
+    2: Ui.Label(text="Count: -1")

@@ -1,0 +1,11 @@
+# A generation inside a called widget: declarations of
+# paths-generation-inside-a-called-widget.
+emit Ui.*
+use App.*
+use Ui.*
+
+test a_generation_extends_its_widgets_list, @page:
+    build
+    click at 1/0.#0.0
+    click at 0
+        => expect Ui.Label(text="gen 1")

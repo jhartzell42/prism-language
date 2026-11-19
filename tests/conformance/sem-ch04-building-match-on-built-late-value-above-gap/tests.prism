@@ -1,0 +1,6 @@
+# The tests of sem-ch04-building-match-on-built-late-value-above-gap.
+emit Ui.*
+use App.*
+
+test long, @Page (Loud "xxxxxxx"):
+    build

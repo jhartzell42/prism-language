@@ -1,0 +1,14 @@
+# A blueprint whose guests give back an event: the event borrows what the blueprint
+# captured, so a widget that gives back what its guests give back is prompt in the
+# blueprint and must mark it `prompt` (claude/promptness-checker.md: a blueprint matters
+# only through the events its output holds; Jimmy, 15 November). Unchecked, a caller
+# would trust the bare signature and a same-tick loop through it would go unseen
+# (soundness). Expected text derived by hand.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+@Run: fn $@(@!Nat emit Ui.*) -> @$!Nat emit Ui.*
+fn @Run $@!b:
+    $!out <- rebuild $@!b:
+        _
+    @ $!out

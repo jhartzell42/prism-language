@@ -1,0 +1,14 @@
+# Derived by hand from ruling HP (`@Host` a widget value like any other) and ruling PL: `@Through` at 0 holds its places in its own list; the host it applies stands at its 0, a widget application of its own (`0/0`), which hosts at its own 0 (`0/0/0.[p]/0`); the label is `@Through`'s 1. A forwarded click reaches the guest in its tick.
+test hosted_through_a_value
+
+tick 0
+  added:
+    0/0/0.[0]/0: Ui.Button(label="press")
+    0/0/0.[1]/0: Ui.Label(text="pressed 0")
+    0/1: Ui.Label(text="2 places")
+
+tick 1
+  in:
+    0/0/0.[0]/0: click
+  changed:
+    0/0/0.[1]/0: Ui.Label(text="pressed 1")

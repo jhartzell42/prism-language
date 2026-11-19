@@ -1,0 +1,8 @@
+# The tests of doc-c1-never-field-wired-to-never.
+emit Ui.* | Watch.*
+use App.*
+
+test never_fires, @page:
+    build
+    click at 0
+    click at 0

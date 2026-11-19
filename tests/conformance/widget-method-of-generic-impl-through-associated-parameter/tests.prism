@@ -1,0 +1,7 @@
+# The tests of widget-method-of-generic-impl-through-associated-parameter.
+emit Ui.*
+use App.*
+use Framing.*
+
+test shown, @page:
+    build

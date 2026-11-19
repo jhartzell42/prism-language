@@ -1,0 +1,12 @@
+# A module declared by two `mod` lines of one file (Semantics ch. 6, "A directory is a
+# tree of modules": "`mod Name` declares a child module"; "Every name has one owner"):
+# `collision` at the second line, which names the first. The expected text is derived by
+# hand. Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+mod Words
+mod Words
+use Words.*
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Name 2}")

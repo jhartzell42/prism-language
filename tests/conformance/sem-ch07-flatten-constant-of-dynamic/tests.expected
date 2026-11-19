@@ -1,0 +1,15 @@
+# Derived by hand from Type System ch. 4 ("Where the table looks": `$ $q` maps over `$q`, a bare type variable lifting) and ruling FV (the outer's update event at n queues the adoption; the flatten reads the new inner from n+1, owed), as sem-ch07-flatten-mapped-constants' transcript is: the click moves `$b` to 22 and the outer with it at 1, and the flatten reads the constant 22 at 2. The first transcript (a change at tick 1) read `$ d` as unlifted; prismc-r21 and r22 gave no change at tick 1.
+test the_flatten_is_its_one_inner
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="20")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1: Ui.Label(text="22")

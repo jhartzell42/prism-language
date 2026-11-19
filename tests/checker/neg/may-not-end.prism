@@ -1,0 +1,3 @@
+# `may-not-end`: a function that calls itself on something no smaller.
+Loop: fn Nat -> Nat
+fn Loop n = Loop n

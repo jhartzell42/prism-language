@@ -1,0 +1,7 @@
+# The tests of sem-ch10-fault-kind-value.
+emit Ui.*
+use App.*
+
+test a_fault_kind_is_a_value, @main:
+    build
+        => expect Ui.Label(text="missing 2 True 2 True")

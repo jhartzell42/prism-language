@@ -1,0 +1,8 @@
+# `Loud`, a child module of ts-ch03-generic-impl-bounds.
+emit r
+
+trait ^Loud a:
+    Shout: fn a -> Text
+
+Yell: fn a -> Text where a: ^Loud
+fn Yell x = "{Shout x}!"

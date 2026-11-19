@@ -1,0 +1,15 @@
+# The switched merge's tests: declarations of sem-appB-merge-all-switched.
+emit Ui.*
+use App.*
+
+test the_switch_follows_the_merged_list, @page:
+    build
+        => expect Ui.Label(text="0")
+    click at 0
+        => expect Ui.Label(text="1")
+    click at 2
+        => expect Ui.Label(text="1")
+    click at 0
+        => expect Ui.Label(text="1")
+    click at 1
+        => expect Ui.Label(text="2")

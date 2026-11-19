@@ -1,0 +1,15 @@
+# The tests of sem-ch07-unbounded-local-clauses-value.
+emit Ui.*
+use App.*
+
+test the_first_clause_runs, @Counted 0:
+    build
+        => expect Ui.Label(text="working")
+    compute until idle
+        => expect Ui.Label(text="11")
+
+test the_second_clause_runs, @Counted 5:
+    build
+        => expect Ui.Label(text="working")
+    compute until idle
+        => expect Ui.Label(text="6")

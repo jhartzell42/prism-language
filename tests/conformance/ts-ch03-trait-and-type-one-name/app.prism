@@ -1,0 +1,21 @@
+# A trait and a type of one name in one module (`^Loud`, `Loud`), which Prism keeps apart by
+# the sigil: the trait is named apart from the type in both targets. Written by Claude on
+# the claude-bugs branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Loud a:
+    Shout: fn a -> Text
+
+type Loud = record:
+    v: Nat
+
+impl ^Loud Loud:
+    fn Shout l = "L{l.v}"
+
+Yell: fn a -> Text where a: ^Loud
+fn Yell x = "{Shout x}!"
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Shout (Loud(v=1))} {Yell (Loud(v=2))}")    # 0

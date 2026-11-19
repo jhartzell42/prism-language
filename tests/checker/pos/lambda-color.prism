@@ -1,0 +1,29 @@
+# A lambda's color is a variable its body joins (gap LB), and a let-bound lambda is
+# color-polymorphic (D8). `pos/lambda-color.colors` holds the typed output's colors.
+Grow: unbounded fn Nat -> Nat
+fn Grow n = n + 1
+
+# A lambda that calls an unbounded function makes its `Fold` unbounded.
+SumGrown: unbounded fn [Nat] -> Nat
+fn SumGrown xs = Fold xs, 0, \|acc, x| acc + (Grow x)
+
+# The same lambda with a bounded body leaves its `Fold` bounded.
+Sum: fn [Nat] -> Nat
+fn Sum xs = Fold xs, 0, \|acc, x| acc + x
+
+# `Run` is generalized over its color: `Bump` is bounded and `Spin` unbounded, so the
+# bounded `Mixed` may call `Bump`.
+Mixed: fn Nat -> Nat
+fn Mixed n:
+    let Run = \|K| \|y| K y
+    let Bump = Run \|y| y + 1
+    let Spin = Run Grow
+    Bump n
+
+# Both instances called: `Both` is unbounded through `Spin`.
+Both: unbounded fn Nat -> Nat
+fn Both n:
+    let Run = \|K| \|y| K y
+    let Bump = Run \|y| y + 1
+    let Spin = Run Grow
+    (Bump n) + (Spin n)

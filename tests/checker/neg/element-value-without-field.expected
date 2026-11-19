@@ -1,0 +1,13 @@
+tests/checker/neg/element-value-without-field.prism:10: error[mismatch]: `Ui.Label` needs `text`
+        let e = Ui.Label()
+                ^^^^^^^^^^
+tests/checker/neg/element-value-without-field.prism:12: error[mismatch]: `Ui.Button` needs `label`
+        let b = Ui.Button()
+                ^^^^^^^^^^^
+tests/checker/neg/element-value-without-field.prism:14: error[mismatch]: `Ui.Button` needs `label`
+        !again <- Ui.Button()
+                  ^^^^^^^^^^^
+tests/checker/neg/element-value-without-field.prism:15: error[mismatch]: `Ui.Label` needs `text`
+        Ui.Label()
+        ^^^^^^^^^^
+4 errors

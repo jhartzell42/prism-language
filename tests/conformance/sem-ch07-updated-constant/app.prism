@@ -1,0 +1,12 @@
+# `!Updated` of a dynamic nothing writes (Semantics ch. 7: `!Updated $d` fires when `$d`
+# is written; a constant is never written, so the event never fires).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@page: @unit
+@page:
+    let $c = $ 1
+    $n <- 0 then $n + 1 on !Updated $c
+    Ui.Label($text=$"n {$n} c {$c}")

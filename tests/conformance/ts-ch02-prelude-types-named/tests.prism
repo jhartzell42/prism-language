@@ -1,0 +1,7 @@
+# The tests of ts-ch02-prelude-types-named.
+emit Ui.*
+use App.*
+
+test prelude_types_are_spelled, @main:
+    build
+        => expect Ui.Label(text="Equal 1 1 1")

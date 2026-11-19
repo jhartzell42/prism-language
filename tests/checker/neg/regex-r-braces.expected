@@ -1,0 +1,4 @@
+tests/checker/neg/regex-r-braces.prism:2: error[regex]: a ${...} that is neither a group number nor a group name
+    let r = %/(a)/${/
+                  ^
+1 error

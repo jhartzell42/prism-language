@@ -1,0 +1,26 @@
+# A widget that gives an event back, taken as a blueprint value; the block that applies it
+# binds the event (Semantics ch. 8: "a blueprint builds nothing until a block applies
+# it", and `<-` binds its result; Type System ch. 2: a blueprint is an opaque handle and
+# still a value). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Clicker: @!Click
+@Clicker:
+    Ui.Label($text=$"press")
+    !go <- Ui.Button($label=$"go")
+    @ !go
+
+@Page: fn Bool -> @unit
+fn @Page b:
+    match ?Pick b, @Clicker:                                     # 0 to 2, or 0
+        ? @!t:
+            !go <- @!t
+            $total <- 0 then $total + 1 on !go
+            Ui.Label($text=$"total {$total}")
+        nil: Ui.Label($text=$"none")
+    Ui.Label($text=$"end")                                       # 3, or 1

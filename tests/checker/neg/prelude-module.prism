@@ -1,0 +1,25 @@
+# `may-not-end`: the prelude's names mean what the checks read in them only in the
+# prelude's own files, by module identity (pick RN). This program is its own `module
+# Prelude`, whose `Drop` keeps the list, so `Grow` never ends; `Count` takes a tree apart,
+# and checks clean.
+module Prelude
+emit r
+
+type Tree = choice:
+    Leaf Nat
+    Node Tree, Tree
+
+Push: fn [Nat], Nat -> [Nat]
+fn Push xs, n = xs
+
+Drop: fn [Nat], Nat -> [Nat]
+fn Drop xs, n = Push xs, n
+
+Grow: fn [Nat] -> Nat
+fn Grow xs = match xs[0]:
+    nil: 0
+    ? ignore: Grow (Drop xs, 1)
+
+Count: fn Tree -> Nat
+fn Count (Leaf n) = n
+fn Count (Node l, r) = Count l

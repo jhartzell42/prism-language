@@ -1,0 +1,12 @@
+tests/checker/neg/impl-lacks.prism:12: error[impl-lacks]: this impl of `^Box` lacks `Shut`, which has no default body
+    impl ^Box Nat:
+    ^^^^^^^^^^^^^^
+  fix: define it under the impl, `fn Shut ...`
+tests/checker/neg/impl-lacks.prism:12: error[mismatch]: `^Box` has no associated type `Other`
+    impl ^Box Nat:
+    ^^^^^^^^^^^^^^
+tests/checker/neg/impl-lacks.prism:17: error[impl-lacks]: this impl of `^Box` lacks `type Item`
+    impl ^Box Text:
+    ^^^^^^^^^^^^^^^
+  fix: choose it under the impl, `type Item = ...`
+3 errors

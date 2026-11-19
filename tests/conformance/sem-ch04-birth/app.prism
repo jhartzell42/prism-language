@@ -1,0 +1,14 @@
+# Semantics ch. 4, "The switch hears the birth": the program and its test as the book
+# writes them; the transcript in sem-ch04-birth.expected is the book's.
+emit Ui.*
+test mod Tests
+
+@birth: @unit
+@birth:
+    !go <- Ui.Button($label=$"New")                                  # 0
+    $gen <- 0 then $gen + 1 on !go
+    $!starts <- rebuild $gen:                                       # 1/#g
+        @started                                                    # 1/#g/0
+    !heard <- @Switch $!starts
+    $count <- 0 then $count + 1 on !heard
+    Ui.Label($text=$"heard={$count}")                                # 2

@@ -1,0 +1,21 @@
+# `mismatch`: an `Error` inside a value is the failure of one `~T`, decided where the value
+# first meets a fault type: `xs` is a `[~Nat]` at `Firsts`, so no `[~Text]` at `Texts`
+# (Semantics ch. 10). Written by Claude on the claude-bugs branch; subject to change.
+SaidN: fn ~Nat -> Text
+fn SaidN (~ n) = "{n}"
+fn SaidN (Error(message=m, ..)) = m
+
+SaidT: fn ~Text -> Text
+fn SaidT (~ t) = t
+fn SaidT (Error(message=m, ..)) = m
+
+Firsts: fn [~Nat] -> Text
+fn Firsts xs = Concat (Each xs, SaidN)
+
+Texts: fn [~Text] -> Text
+fn Texts xs = Concat (Each xs, SaidT)
+
+Both: fn Text -> Text
+fn Both t:
+    let xs = [[Error(kind=Prelude.NotANumber, message=t)]]
+    "{Firsts xs}{Texts xs}"

@@ -1,0 +1,16 @@
+# A signature's variable given where a type's row parameter stands is a row variable of the
+# signature (ruling RR): `Count: fn Seated rest -> Nat` takes a `Seated Fs.*`. Found by the
+# step 3 build on the tally (`@HostDocument`'s `Seats d rest`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+type Seated rest = record:
+    $guest: (Text ==> $@(@unit emit Ui.* | rest))
+
+Count: fn Seated rest -> Nat
+fn Count seated = 0
+
+Seat: fn $(Text ==> $@(@unit emit Ui.* | Fs.*)) -> Seated Fs.*
+fn Seat $guests = Seated($guest=$guests)
+
+Counted: fn $(Text ==> $@(@unit emit Ui.* | Fs.*)) -> Nat
+fn Counted $guests = Count (Seat $guests)

@@ -1,0 +1,11 @@
+# `may-not-end`: `Drop xs, 1` is no larger than `xs`, and strictly smaller only where the
+# list is known not to be empty (pick SM): `Drop` of an empty list is the empty list, so
+# `Loop [[]]` never ends. `Count`'s `match` took an element of `xs` in the arm that drops
+# one, and checks clean.
+Loop: fn [Nat] -> Nat
+fn Loop xs = Loop (Drop xs, 1)
+
+Count: fn [Nat] -> Nat
+fn Count xs = match xs[0]:
+    nil: 0
+    ? ignore: 1 + (Count (Drop xs, 1))

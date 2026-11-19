@@ -1,0 +1,7 @@
+# The tests of ts-ch03-assoc-in-impl-match (Type System chapter 3).
+emit Ui.*
+use App.*
+
+test make_again, @main:
+    build
+        => expect Ui.Label(text="Crate(count=4) Full \"z\" Empty")

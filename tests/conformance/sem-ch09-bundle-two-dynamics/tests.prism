@@ -1,0 +1,12 @@
+# The tests of sem-ch09-bundle-two-dynamics. The World's state for the element is the
+# bundle's `Level`, the current values of its `$` parts, a tuple.
+emit Ui.* | Pad.*
+use App.*
+
+test two_dynamics, @chat:
+    with Pad.Link(address="chat:7000") = (("up", 2)), build
+        => expect Ui.Label(text="up, 2 peers")
+    push Pad.Link(address="chat:7000") = (("down", 2))
+        => expect Ui.Label(text="down, 2 peers")
+    push Pad.Link(address="chat:7000") = (("up", 5))
+        => expect Ui.Label(text="up, 5 peers")

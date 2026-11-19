@@ -1,0 +1,4 @@
+tests/checker/neg/associated-type-at-ever-larger-types.prism:24: error[grows-without-end]: `Frame` calls itself through `Onward` at `Box (Box (Box (Inner a)))` for `a`: a type that grows without end
+    fn Onward y, more = Frame Box(held=y), more
+                        ^^^^^
+1 error

@@ -1,0 +1,15 @@
+# An element applied names every field its tag declares, as a line, under `<-` and as a
+# value: the checker refuses one left out, so the back end's guard "an element value
+# without its field" (lower/expr.prism) is not reached. Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+use Ui.*
+
+@main: @unit
+@main:
+    let e = Ui.Label()
+    @Element e
+    let b = Ui.Button()
+    !go <- @Element b
+    !again <- Ui.Button()
+    Ui.Label()

@@ -1,0 +1,35 @@
+# A trait's method is a function, and a function is a value (Type System ch. 2, function
+# values; ch. 3, traits): `Each ns, Blank` passes a method whose type is only in its
+# result, at the impl the result's type picks, and `Each xs, Twice` one whose type is in
+# its parameter. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+trait ^Blank a:
+    Blank: fn Nat -> a
+    Twice: fn a -> a
+
+impl ^Blank Nat:
+    fn Blank n = n
+    fn Twice x = x * 2
+
+impl ^Blank Text:
+    fn Blank n = "blank {n}"
+    fn Twice x = "{x}{x}"
+
+Many: fn [Nat] -> [a] where a: ^Blank
+fn Many ns = Each ns, Blank
+
+Doubled: fn [a] -> [a] where a: ^Blank
+fn Doubled xs = Each xs, Twice
+
+Joined: fn [Text] -> Text
+fn Joined ts = Fold ts, "", \|acc, t| "{acc}[{t}]"
+
+Total: fn [Nat] -> Nat
+fn Total ns = Fold ns, 0, \|acc, n| acc + n
+
+@main: @unit
+@main:
+    Ui.Label($text=$"{Joined (Many [[1, 2]])} {Total (Many [[1, 2]])} {Joined (Doubled [["a", "b"]])} {Total (Doubled [[1, 2]])}")    # 0

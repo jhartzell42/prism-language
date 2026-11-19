@@ -1,0 +1,17 @@
+# A partial application keeps the marks of the parameters it leaves: `@Started 3` is a
+# `fn prompt !Nat -> @!Nat`, so it stands where one is wanted. Found by the step 3 build on
+# the tally (`@HostDocument (@InMemory<<Tallied OneEach>> empty), seats`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+@Started: fn Nat, prompt !Nat -> @!Nat
+fn @Started first, !more = @ !more
+
+@Run: fn prompt (fn prompt !Nat -> @!Nat), prompt !Nat -> @!Nat
+fn @Run Make, !e:
+    !out <- Make !e
+    @ !out
+
+@Used: fn prompt !Nat -> @!Nat
+fn @Used !e:
+    !out <- @Run (@Started 3), !e
+    @ !out

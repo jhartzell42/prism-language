@@ -1,0 +1,6 @@
+# The tests of sem-ch06-qualified-lowercase-widget.
+emit Ui.*
+use App.*
+
+test it_builds, @page:
+    build

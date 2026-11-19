@@ -1,0 +1,6 @@
+# `frozen`: nothing is used after `Freeze`.
+Numbers: fn Nat -> [Nat]
+fn Numbers n = update [[]]:
+    let &parent = Buffer.Numbered n
+    &_ <= Freeze &parent
+    &parent[0] <= ? 1

@@ -1,0 +1,21 @@
+# `@ \|..| ..` where a blueprint of a quantified function is wanted checks the lambda at
+# that function's type, so its tag arms each narrow `o`. Found by the step 3 build on the
+# library (`@OnDisk` and `@Over`, which end in `@ \|at, prompt asking| ..`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+family Count
+
+tag Count.Ask of Element Nat:
+    by: Nat
+
+tag Count.Name of Element Text:
+    name: Text
+
+type Answerer = forall o. fn Element Count.* o -> @o emit unit
+
+@Answering: fn Nat -> @Answerer
+fn @Answering n:
+    let m = n + 1
+    @ \|element| match element:
+        Count.Ask(by=by): @ by + m
+        Count.Name(name=name): @ name

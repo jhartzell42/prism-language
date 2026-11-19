@@ -1,0 +1,21 @@
+# A widget of several clauses that calls itself directly in a static position (rulings
+# since the Bible, TC: places are counted as they are built, so each level's places take
+# the next numbers and the caller's later place follows the last one built).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Count: fn Nat -> @unit
+fn @Count 0:
+    Ui.Label($text=$"zero")
+fn @Count n:
+    Ui.Label($text=$"at {n}")
+    match n -? 1:
+        ? m: @Count m
+        nil: Ui.Label($text=$"zero")
+
+@main: @unit
+@main:
+    @Count 2
+    Ui.Label($text=$"after")

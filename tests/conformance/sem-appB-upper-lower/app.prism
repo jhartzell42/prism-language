@@ -1,0 +1,11 @@
+# Semantics Appendix B: `Upper` and `Lower` are Unicode's default full case mapping,
+# locale-independent, with the final sigma rule (tests/text/README.md states it; the
+# runtimes' own tests read tests/text/case.txt). Both targets agree on every line.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+test mod Tests
+
+Shout: fn Text -> Text
+fn Shout t = Upper t
+
+Hush: fn Text -> Text
+fn Hush t = Lower t

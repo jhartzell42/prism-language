@@ -1,0 +1,116 @@
+# The tables: programs that seat participants at one game of chess. Each builds the game's
+# `ChessSeats`, every seat with the blueprint of the participant that sits there, and
+# hands them to `@HostDocument` with an implementation (`Implementations`). No participant
+# is given the state. The front ends the command line picks take the implementation as
+# their one argument; the tables the tests run keep the game in memory, but for the saved
+# game's and the remote game's.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.* | Pane.* | Gui.* | Console.* | Fs.* | Net.*
+use Documents.*
+use Rules.*
+use Squares.*
+use Game.*
+use Implementations.*
+use TextPlayers.*
+use CommandLine.*
+use Board.*
+use Window.*
+use Window.Panes.*
+use Window.Widgets.*
+
+# ---- the front ends the command line picks (`app.prism`)
+
+# a board per side that sits here
+BoardSeats: fn [Color] -> (Color ==> $@(@unit emit Pane.* | Gui.* | Seat.* ChessGame Player | r))
+fn BoardSeats seated = Map (Each seated, \|color| ((color, $ (@BoardPlayer color))))
+
+# a terminal per side that sits here
+LineSeats: fn [Color] -> (Color ==> $@(@unit emit Console.* | Seat.* ChessGame Player | r))
+fn LineSeats seated = Map (Each seated, \|color| ((color, $ (@LinePlayer color))))
+
+# The boards of the sides that sit here, side by side, the game kept as `keeping` says.
+@Boards: fn Keeping, [Color] -> @unit emit Pane.* | Gui.* | Fs.* | Net.*
+fn @Boards keeping, seated = @Row 16.0, @widget:
+    @Kept keeping, ChessSeats($player=$ (BoardSeats seated), $spectator=$ {{}})
+
+# The terminals of the sides that sit here, the game kept as `keeping` says.
+@Terminals: fn Keeping, [Color] -> @unit emit Console.* | Fs.* | Net.*
+fn @Terminals keeping, seated:
+    @Kept keeping, ChessSeats($player=$ (LineSeats seated), $spectator=$ {{}})
+
+# ---- the hot seat in a window: two boards side by side
+
+@boards: @unit emit Pane.* | Gui.*
+@boards:
+    @Row 16.0, @widget:
+        @InMemoryGame ChessSeats($player=$ {{White: $ (@BoardPlayer White), Black: $ (@BoardPlayer Black)}}, $spectator=$ {{}})
+
+@twoBoards: @unit emit Pane.* | Gui.*
+@twoBoards:
+    @Window ($ "Chess"), (Extent 1400.0, 760.0), @boards
+
+# The same with a spectator at a terminal: its lines pass up through the row and the
+# window to the root.
+@watched: @unit emit Pane.* | Gui.* | Console.*
+@watched:
+    @Window ($ "Chess"), (Extent 1400.0, 760.0), @widget:
+        @Row 16.0, @widget:
+            @InMemoryGame ChessSeats($player=$ {{White: $ (@BoardPlayer White), Black: $ (@BoardPlayer Black)}}, $spectator=$ {{"ada": $ (@LineSpectator "ada")}})
+
+# White at a board in a window, Black at a terminal: one role, two ways of sitting, in
+# one map of seats (each participant's row is open, ruling OR).
+@againstTerminal: @unit emit Pane.* | Gui.* | Console.*
+@againstTerminal:
+    @Window ($ "Chess"), (Extent 700.0, 760.0), @widget:
+        @InMemoryGame ChessSeats($player=$ {{White: $ (@BoardPlayer White), Black: $ (@LinePlayer Black)}}, $spectator=$ {{}})
+
+# ---- terminals: two players and a spectator, nothing but lines
+
+@terminals: @unit emit Console.*
+@terminals:
+    @InMemoryGame ChessSeats($player=$ {{White: $ (@LinePlayer White), Black: $ (@LinePlayer Black)}}, $spectator=$ {{"ada": $ (@LineSpectator "ada")}})
+
+# ---- the hot seat at text interfaces: two players and a spectator, and a button that
+# seats a second spectator
+
+@hotSeat: @unit emit Ui.*
+@hotSeat:
+    !beaJoins <- Ui.Button($label=$"bea joins")                                    # 0
+    $spectators <- {{"ada": $ (@SpectatorView "ada")}} then {{"ada": $ (@SpectatorView "ada"), "bea": $ (@SpectatorView "bea")}} on !beaJoins
+    @InMemoryGame ChessSeats($player=$ {{White: $ (@TextPlayer White), Black: $ (@TextPlayer Black)}}, $spectator=$spectators)   # 1
+
+# ---- scripted players and a spectator
+
+# A script as a program writes it: moves as values, each a request to play it.
+Plays: fn [ChessMove] -> Script
+fn Plays moves = InTurn (Each moves, \|move| MakeMove move)
+
+@Scripted: fn Script, Script -> @unit emit Ui.*
+fn @Scripted whiteScript, blackScript:
+    @InMemoryGame ChessSeats($player=$ {{White: $ (@ScriptedPlayer White, whiteScript), Black: $ (@ScriptedPlayer Black, blackScript)}}, $spectator=$ {{"ada": $ (@SpectatorView "ada")}})
+
+@foolsMate: @unit emit Ui.*
+@foolsMate:
+    @Scripted (Plays [[(Moving f2, f3), (Moving g2, g4)]]), (Plays [[(Moving e7, e5), (Moving d8, h4)]])
+
+@castling: @unit emit Ui.*
+@castling:
+    @Scripted (Plays [[(Moving e2, e4), (Moving g1, f3), (Moving f1, c4), (Moving e1, g1)]]), (Plays [[(Moving e7, e5), (Moving b8, c6), (Moving f8, c5)]])
+
+@enPassant: @unit emit Ui.*
+@enPassant:
+    @Scripted (Plays [[(Moving e2, e4), (Moving e4, e5), (Moving e5, d6)]]), (Plays [[(Moving a7, a6), (Moving d7, d5)]])
+
+@promotion: @unit emit Ui.*
+@promotion:
+    @Scripted (Plays [[(Moving a2, a4), (Moving a4, b5), (Moving b5, a6), (Moving a6, b7), (Promoting b7, a8, Knight)]]), (Plays [[(Moving b7, b5), (Moving a7, a6), (Moving c8, b7), (Moving b8, c6)]])
+
+# Threefold repetition: the knights go out and back twice.
+@repetition: @unit emit Ui.*
+@repetition:
+    @Scripted (Plays [[(Moving g1, f3), (Moving f3, g1), (Moving g1, f3), (Moving f3, g1)]]), (Plays [[(Moving g8, f6), (Moving f6, g8), (Moving g8, f6), (Moving f6, g8)]])
+
+# Two players that each ask once, in one tick: White for e2e4, Black for e7e5.
+@bothOpen: @unit emit Ui.*
+@bothOpen:
+    @Scripted (AtTheStart (MakeMove (Moving e2, e4))), (AtTheStart (MakeMove (Moving e7, e5)))

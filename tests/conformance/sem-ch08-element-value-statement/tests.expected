@@ -1,0 +1,21 @@
+# Derived by hand from Semantics ch. 8 ("Elements and the element statement": `@Element c` is the element statement at the same path, each taking the next number; a `$` field is live, so the place changes in place).
+test a_let_bound_element_is_placed
+
+tick 0
+  added:
+    0: Ui.Button(label="inc")
+    1: Ui.Label(text="made 0")
+    2: Ui.Button(label="go")
+    3: Ui.Label(text="went 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="made 1")
+
+tick 2
+  in:
+    2: click
+  changed:
+    3: Ui.Label(text="went 1")

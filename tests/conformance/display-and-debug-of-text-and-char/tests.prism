@@ -1,0 +1,9 @@
+# Display and debug of a text, a character and a number: declarations of
+# display-and-debug-of-text-and-char.
+emit Ui.*
+use App.*
+use Ui.*
+
+test a_text_displays_as_itself_and_debugs_quoted, @page:
+    build
+        => expect Ui.Label(text="hi q 7 True")

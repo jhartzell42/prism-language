@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 2, "Collections" (a `[a]+` fills a place already known to want an `[a]`) and ruling NS (the conversion is symmetric beside an `[a]`): the counts are 2, 1 and 2 + 3; the comparisons are of `[[1, 2]]` with itself, and last of `[[1, 2]]+` with `[[4]]+`. Never run.
+test the_non_empty_fills_the_plain_place
+
+tick 0
+  added:
+    0: Ui.Label(text="2 1 5 True True True False")

@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 8 (a blueprint applied builds its places where it stands); never run. Under ruling PL the root widget's places are the top list: `@main`'s line applying `@page` is its 0 (`0/0`).
+test the_other_widget_is_built
+
+tick 0
+  added:
+    0/0: Ui.Label(text="page")

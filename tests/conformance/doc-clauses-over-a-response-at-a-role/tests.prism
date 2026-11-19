@@ -1,0 +1,6 @@
+# The tests of doc-clauses-over-a-response-at-a-role.
+emit Ui.*
+use App.*
+
+test each_response_said, @page:
+    build

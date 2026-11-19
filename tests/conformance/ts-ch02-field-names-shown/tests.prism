@@ -1,0 +1,8 @@
+# Field names shown: declarations of ts-ch02-field-names-shown. Written by Claude on the
+# claude-bugs branch; subject to change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test fields_show_as_written, @page:
+    build

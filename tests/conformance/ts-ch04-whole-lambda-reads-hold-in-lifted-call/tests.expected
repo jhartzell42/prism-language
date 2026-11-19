@@ -1,0 +1,11 @@
+# Derived by hand from Type System ch. 4 (Application): `Twice` ignores its function, so the label is "twice 2" before and after the click, which changes no level shown. Never run: prismc-s4 refuses it (gap LF, `WholeValueOf`: `$count` has no live dynamic in the lambda).
+test a_whole_lambda_reading_a_hold
+
+tick 0
+  added:
+    0: Ui.Button(label="Inc")
+    1: Ui.Label(text="twice 2")
+
+tick 1
+  in:
+    0: click

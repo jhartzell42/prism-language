@@ -1,0 +1,4 @@
+tests/checker/neg/regex-count-bound.prism:2: error[regex]: a count above 1000
+    let r = %/a{1001}/
+               ^
+1 error

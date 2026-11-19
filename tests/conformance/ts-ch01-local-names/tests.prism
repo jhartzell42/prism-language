@@ -1,0 +1,8 @@
+# Audited: 4 halves to 2 and is small, 20 halves to 10 and is big; each label and half follow.
+# The locals' tests: declarations of ts-ch01-local-names.prism (Semantics chapter 6).
+emit Ui.*
+use App.*
+
+test locals_keep_their_names, @shown:
+    build
+        => expect Ui.Label(text="small 2 2 / big 10 10")

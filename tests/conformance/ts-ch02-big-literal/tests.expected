@@ -1,0 +1,7 @@
+# The literals' transcript, derived by hand (ts-ch02-big-literal.prismtest).
+test big_literals_keep_their_digits
+
+tick 0
+  added:
+    0: Ui.Label(text="4294967295 4294967296 60000000000 60000000001 18446744073709551616 36893488147419103232 -9223372036854775809 123456789012345678901234567890")
+    1: Ui.Label(text="minute other")

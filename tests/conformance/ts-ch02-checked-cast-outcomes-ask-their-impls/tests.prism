@@ -1,0 +1,6 @@
+# The tests of ts-ch02-checked-cast-outcomes-ask-their-impls.
+emit Ui.*
+use App.*
+
+test both_outcomes, @main:
+    build

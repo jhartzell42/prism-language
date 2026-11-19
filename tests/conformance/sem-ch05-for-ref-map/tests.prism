@@ -1,0 +1,7 @@
+# The tests of sem-ch05-for-ref-map.
+emit Ui.*
+use App.*
+
+test it_builds, @page:
+    build
+        => expect Ui.Label(text="2 6 2")

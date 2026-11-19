@@ -1,0 +1,5 @@
+tests/checker/neg/prompt-function-parameter-unmarked.prism:13: error[prompt-unmarked]: `@Use` gives an event that fires in the tick `Make` fires, and its type does not mark `Make`'s parameter `prompt`
+        @ !made
+        ^^^^^^^
+  fix: mark the parameter in its type, `@Use: fn prompt fn !Nat -> @!Nat -> @!Nat`, or give it a tick later with `@Defer`
+1 error

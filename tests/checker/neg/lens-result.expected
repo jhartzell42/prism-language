@@ -1,0 +1,5 @@
+tests/checker/neg/lens-result.prism:12: error[lens-result]: a lens gives back a reference, and `&Acc` gives back `Int`
+    &Acc: fn &Vm -> Int
+    ^^^^
+  fix: write the result as `&Int`
+1 error

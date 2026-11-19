@@ -1,0 +1,23 @@
+# A file's own declaration shadows a name it reaches through `use X.*` (Jimmy, 13
+# November, ruling OS): `Birds` declares `Kind`, `Small` and `Count`, and this file
+# declares its own; a bare name here is this file's. `Birds.Count` still reaches the
+# other. Two modules reached by `use` that both declare a name, and the prelude against a
+# file's own, still collide (tests/checker/neg/pattern-constructor-collision,
+# tests/checker/neg/collision).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+mod Birds
+test mod Tests
+use Birds.*
+
+type Kind = choice:
+    Small
+    Tall
+
+Count: fn Kind -> Nat
+fn Count Small = 1
+fn Count Tall = 2
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Count Tall} {Birds.Count Birds.Small}")       # 0

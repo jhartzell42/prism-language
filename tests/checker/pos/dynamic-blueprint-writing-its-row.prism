@@ -1,0 +1,11 @@
+# `$@(@a emit rest)` is a dynamic blueprint of `a` whose row is `rest`: the parentheses hold
+# the `emit`, and the `@` outside them names the layer they give (documents book ch. 5,
+# "Seats: a record of live maps", `$@(@played emit Seat.* ChessGame Player | rest)`).
+# Found by the step 3 build on the library (`@Seated`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+@Built: fn prompt $(k ==> $@(@a emit rest)) -> @$(k ==> a) emit rest
+fn @Built $seats:
+    for seat, $@guest <- $seats:
+        rebuild $@guest:
+            _

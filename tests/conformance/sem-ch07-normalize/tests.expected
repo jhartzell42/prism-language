@@ -1,0 +1,12 @@
+# Conformance ch. 1, "A job, computed": the book's transcript, byte for byte.
+test two_reductions_take_three_cycles
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 3 ticks, 1 to 3
+
+tick 3
+  changed:
+    1: Ui.Label(text="Lam (Var 0)")

@@ -1,0 +1,7 @@
+# The tests of sem-ch04-rebuild-plain-result (Semantics chapter 4).
+emit Ui.*
+use App.*
+use Ui.*
+
+test rebuild_plain_result, @main:
+    build

@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 5 (`while pattern <- e:` runs while the pattern matches, its names bound for the turn): 1 * 2 + 3 * 4 = 14, then `End` does not match; a chain of one link never matches, so 0.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="14 0")

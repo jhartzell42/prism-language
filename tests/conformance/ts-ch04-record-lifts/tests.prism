@@ -1,0 +1,9 @@
+# The tests of ts-ch04-record-lifts.
+emit Ui.*
+use App.*
+
+test lifted_records, @main:
+    build
+        => expect Ui.Label(text="2 1/10")
+    click at 0
+        => expect Ui.Label(text="3 2/20")

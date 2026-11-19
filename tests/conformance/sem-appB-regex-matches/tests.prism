@@ -1,0 +1,22 @@
+# `Matches` and `?Find`: declarations of sem-appB-regex-matches.
+emit r
+use App.*
+
+check iteration:
+    All (Matches %/a*/, "baaa") => "0-0 1-4"
+    All (Matches %/a*/, "") => "0-0"
+    All (Matches %//, "abc") => "0-0 1-1 2-2 3-3"
+    All (Matches %//, "é") => "0-0 2-2"
+    All (Matches %/x/, "abc") => ""
+    All (Matches %/a+?/, "aaa") => "0-1 1-2 2-3"
+    All (Matches %/a|/, "ab") => "0-1 2-2"
+    All (Matches %/\d+/, "a1b22c333") => "1-2 3-5 6-9"
+    Len (Matches %/é/, "éaé") => 2
+
+check leftmost:
+    Spans (?Find %/a|ab/, "ab") => "0-1"
+    Spans (?Find %/ab|a/, "ab") => "0-2"
+    Spans (?Find %/a*?b/, "aab") => "0-3"
+    Spans (?Find %/a+/, "baaab") => "1-4"
+    Spans (?Find %/x/, "abc") => "nil"
+    Spans (?Find %/b*/, "abc") => "0-0"

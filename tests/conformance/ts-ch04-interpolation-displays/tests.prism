@@ -1,0 +1,8 @@
+# Interpolation's display: declarations of ts-ch04-interpolation-displays. Written by
+# Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test interpolation_displays, @page:
+    build

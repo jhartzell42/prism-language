@@ -1,0 +1,10 @@
+# Derived by hand from Semantics Appendix B, Maps: `Union` keeps the left map's value on a shared key, at either size order; a key in neither map has no value ("-"); the size is the number of keys in either.
+check union_left_wins
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok

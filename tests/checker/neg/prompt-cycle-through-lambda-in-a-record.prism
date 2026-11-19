@@ -1,0 +1,23 @@
+# A prompt cycle through an event a lambda inside a record captures (Jimmy, 14 November,
+# ruling PT, choice (a): at a parameter marked `prompt`, everything the argument
+# captures counts, lambdas inside data included; a soundness hole before it, in the
+# checker before PT too). `@Use` applies the record's `make` and gives back its result.
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+type Box = record:
+    make: fn !Nat -> @!Nat
+
+@Use: fn prompt Box -> @!Nat
+fn @Use box:
+    !made <- box.make never
+    @ !made
+
+@host: @unit
+@host:
+    !press <- Ui.Button($label=$"press")
+    let !fed = (1 on !press) <| !out
+    !out <- @Use Box(make=\|!ignored| @ !fed)
+    $seen <- 0 then !out
+    Ui.Label($text=$"{$seen}")

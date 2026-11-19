@@ -1,0 +1,12 @@
+# Derived by hand from D6 as ruled: Run, Sums, and per element the lambda and Grow entered, six cycles.
+test lambdas_take_their_parameters_apart
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 6 ticks, 1 to 6
+
+tick 6
+  changed:
+    1: Ui.Label(text="26 106")

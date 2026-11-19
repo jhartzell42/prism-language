@@ -1,0 +1,6 @@
+# The tests of ts-ch06-associated-bound-given-in-default.
+emit Ui.*
+use App.*
+
+test bound_given_in_default, @page:
+    build

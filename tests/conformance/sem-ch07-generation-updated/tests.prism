@@ -1,0 +1,11 @@
+# The generation's `!Updated` tests: declarations of sem-ch07-generation-updated.
+emit Ui.*
+use App.*
+
+test the_generation_hears_its_block, @main:
+    build
+        => expect Ui.Label(text="page 1: 0")
+    click at 0
+        => expect Ui.Label(text="page 1: 1")
+    click at 0
+        => expect Ui.Label(text="page 1: 2")

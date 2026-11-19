@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 4 ("the order of a group's lines decides positions and nothing else") and ruling PL (a path is a list of lists, one per widget application; a building arm extends its list at the arm's position): loud builds the first `if`'s arm at 0, its label `0.0` and `@Twice 7` at `0.1` (`@Seven` gives 7), so `m` is 14, its label at 1, and the second `if` at 2 builds `@Seven` at its arm's 0; soft builds no arm, `m` is 1 and its label stands at 1.
+test loud
+
+tick 0
+  added:
+    0.0: Ui.Label(text="arm")
+    0.1/0: Ui.Label(text="twice 7")
+    1: Ui.Label(text="m 14")
+    2.0/0: Ui.Label(text="seven")
+
+test soft
+
+tick 0
+  added:
+    1: Ui.Label(text="m 1")

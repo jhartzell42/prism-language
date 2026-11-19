@@ -1,0 +1,12 @@
+# A variant written qualified where an associated type's index stands (`Watch.Viewer`),
+# as the fix of a bare variant's collision says to write it: `Told Watching Watch.Viewer`
+# is a `Nat`. Found by the step 3 build on the tally (`Seat.* (Tallied o) Tally.Viewer`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+mod Watch
+mod Shop
+use Watch.*
+use Shop.*
+
+Told: fn Told Watching Watch.Viewer -> Nat
+fn Told n = n

@@ -1,0 +1,9 @@
+# A nested `for` over a row's entry: declarations of sem-ch04-for-nested-entry.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test the_inner_for_builds_the_new_child, @main:
+    build
+    click at 0

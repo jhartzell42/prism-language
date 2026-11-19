@@ -1,0 +1,44 @@
+# Derived by hand from Type System ch. 4, `?` and `~` at the plain layer: each lifted operation is its plain value over present operands, `nil` (the leftmost `Error`) over any absent one; and ch. 2, a map index read through the `?` it gives.
+check fields
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+
+check operands
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok
+
+check faults
+1: ok
+2: ok
+3: ok
+4: ok
+
+test under_a_dynamic
+
+tick 0
+  added:
+    0: Ui.Button(label="Next")
+    1: Ui.Label(text="four 8")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="seven 14")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="none 0")

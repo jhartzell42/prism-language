@@ -1,0 +1,9 @@
+tests/checker/neg/lens-outside-update.prism:18: error[lens-argument]: the lens `&Acc` is applied to a reference, and `vm` is a plain value
+    fn Peek vm = &Acc vm
+                 ^^^^^^^
+  fix: apply it in an `update` block, to `&_`, a local `&x`, or a path from one
+tests/checker/neg/lens-outside-update.prism:22: error[lens-argument]: the lens `&Acc` is applied to a reference, and `other` is a plain value
+        &_.regs.x <= &Acc other
+                     ^^^^^^^^^^
+  fix: apply it in an `update` block, to `&_`, a local `&x`, or a path from one
+2 errors

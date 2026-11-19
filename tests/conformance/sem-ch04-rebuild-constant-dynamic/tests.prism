@@ -1,0 +1,13 @@
+# The tests of sem-ch04-rebuild-constant-dynamic.
+emit Ui.*
+use App.*
+
+test the_label_lags, @viewer:
+    build
+        => expect Ui.Label(text="showing 1")
+    click at 0
+        => expect Ui.Label(text="page 2")
+    tick
+        => expect Ui.Label(text="showing 1")
+    tick
+        => expect Ui.Label(text="showing 2")

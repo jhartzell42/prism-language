@@ -1,0 +1,9 @@
+# The tests of bundle-part-in-a-dynamic-record-field-read-by-another-widget.
+emit Ui.*
+use App.*
+
+test counted_and_reset, @page:
+    build
+    click at 0/0/0
+    click at 0/0/0
+    click at 0/0/1

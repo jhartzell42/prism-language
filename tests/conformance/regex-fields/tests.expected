@@ -1,0 +1,13 @@
+# Derived by hand from Semantics Appendix B: the words of "ab cd" start at bytes 0 and 3, of "e fg" at 0 and 2; each label shows the words, their starts and the `$front` hold.
+test fields_through_a_lambda
+
+tick 0
+  added:
+    0: Ui.Button(label="Next")
+    1: Ui.Label(text="ab,cd 0 3 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="e,fg 0 2 1")

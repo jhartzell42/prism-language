@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 4 ("Interpolation is an application of the text-building function to every" hole, so it lifts as an application does; `?` at the plain layer: the result is `nil` if an operand was): a present name gives the greeting, an absent one `nil`, which `Or` replaces.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="hello n1! none")

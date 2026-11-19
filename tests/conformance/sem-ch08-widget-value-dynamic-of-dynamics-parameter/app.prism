@@ -1,0 +1,29 @@
+# A widget whose `$` parameter holds a dynamic below its top (a dynamic tuple with a
+# `$` part), applied to its argument, taken as a blueprint value and applied out of an
+# option (Type System ch. 1: a dynamic of a tuple that holds a dynamic is a type as any
+# other; ch. 2: a blueprint is an opaque handle and still a value;
+# Semantics ch. 8: "a blueprint builds nothing until a block applies it").
+# sem-ch08-widget-value-dynamic-parameter with time below the parameter's top. Written
+# by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+Named: fn (($Nat, Text)) -> Text
+fn Named ((ignore, name)) = name
+
+@Meter: fn $(($Nat, Text)) -> @unit
+fn @Meter $gauge:
+    Ui.Label($text=$"meter {Named $gauge}")
+
+@Page: @unit
+@Page:
+    let $level = $ 7
+    let $gauge = $ (($level, "main"))
+    match ?Pick True, (@Meter $gauge):                           # 0
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    Ui.Label($text=$"end")                                       # 1

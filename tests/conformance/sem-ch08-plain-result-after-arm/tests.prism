@@ -1,0 +1,10 @@
+# The plain result below an arm's: declarations of sem-ch08-plain-result-after-arm.
+emit Ui.*
+use App.*
+
+test the_block_result_is_read_by_its_caller, @main:
+    build
+        => expect Ui.Label(text="n 10")
+        => expect Ui.Label(text="m 11 0")
+    click Ui.Button(label="go")
+        => expect Ui.Label(text="m 11 1")

@@ -1,0 +1,30 @@
+# A function's clauses are a `match`: after a `Fixed<<Left>>` column the next column is the
+# narrowed type, so `(Only n)` covers a `Payload Box Left`, an `Only`, and the clauses
+# cover. Found by the step 3 build on the tally (`Step`'s `Fixed<<Keeper>>, name, Clear`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+trait ^Sided d:
+    type Side
+    type Payload (s: Side d)
+
+type BoxSide = choice:
+    Left
+    Right
+
+type Only = choice:
+    Only Nat
+
+type Label = choice:
+    Label Text
+
+type Box = record:
+    size: Nat
+
+impl ^Sided Box:
+    type Side = BoxSide
+    type Payload Left = Only
+    type Payload Right = Label
+
+Weight: forall (s: Side Box). fn Fixed s, Payload Box s -> Nat
+fn Weight Fixed<<Left>>, (Only n) = n
+fn Weight Fixed<<Right>>, (Label text) = Len text

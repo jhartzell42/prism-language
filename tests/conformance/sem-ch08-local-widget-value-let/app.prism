@@ -1,0 +1,21 @@
+# A widget defined in a block, named again by a `let` and passed on as a blueprint value
+# (Semantics ch. 4: `let` binds a value, and a blueprint is one; ch. 8: "a blueprint
+# builds nothing until a block applies it"). sem-ch08-local-widget-passed-as-value with
+# the `let` between. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Page: fn Bool -> @unit
+fn @Page b:
+    let k = 7
+    @line:
+        Ui.Label($text=$"line {k}")
+    let @w = @line
+    match ?Pick b, @w:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    Ui.Label($text=$"end")

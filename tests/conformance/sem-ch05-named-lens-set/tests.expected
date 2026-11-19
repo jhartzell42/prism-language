@@ -1,0 +1,5 @@
+# The book prints none for this program; written by hand from Semantics ch. 5.
+check reset_sets_the_part
+1: ok
+2: ok
+3: ok

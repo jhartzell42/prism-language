@@ -1,0 +1,77 @@
+# The parser's test module: its checks and the helpers they need, which only
+# `prism test` and `prism check` read (claude/modules-style-pass.md).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Syntax.Parser.*
+use Syntax.Parser.Decls.*
+use Syntax.Parser.Expr.*
+use Syntax.Parser.Blocks.*
+use Syntax.Parser.Types.*
+use Syntax.Parser.TestLanguage.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Syntax.Sexp.*
+
+# The helpers of prismc's parser checks (the checks below): each prints a text's
+# tree in S-expression notation, or its diagnostics, as `prismc FILE` does.
+
+Dump: unbounded fn Text -> Text
+fn Dump src = SexpModule (ParseFile src).tree
+
+Errors: unbounded fn Text -> [Text]
+fn Errors src = Each (ParseFile src).diags, \|d| d.message
+
+# The checks.
+check declarations:
+    Dump "let x = 1" => "(module\n  (let x 1))\n"
+    Dump "F: fn Nat -> Nat\nfn F n = n + 1" => "(module\n  (sig F (fn Nat -> Nat))\n  (fn F (params n)\n    (+ n 1)))\n"
+    Dump "type Op = choice:\n    Add Int\n    Swap" => "(module\n  (type Op choice\n    (case Add Int)\n    (case Swap)))\n"
+
+check precedence:
+    Dump "let c = $count + 1 on !click" => "(module\n  (let c (on (+ $count 1) !click)))\n"
+    Dump "let s = Size $k + 1" => "(module\n  (let s (call Size (+ $k 1))))\n"
+    Dump "let n = not a == b" => "(module\n  (let n (not (== a b))))\n"
+    Dump "let t = F a, G b, c" => "(module\n  (let t (call F a (call G b) c)))\n"
+
+# A parenthesized lambda keeps its parameters: the group ends the lambda's body, not its
+# bars.
+check lambdas:
+    Dump "let t = F n, (\\|y| y + 1), \\|y| y" => "(module\n  (let t (call F n (group (lambda (params y) (+ y 1))) (lambda (params y) y))))\n"
+
+check widgets:
+    Dump "@w:\n    !inc <- Ui.Button($label=$\"Go\")\n    $n <- 0 then $n + 1 on !inc" => "(module\n  (widget @w\n    (bind !inc (call() Ui.Button $label=$\"Go\"))\n    (hold $n 0 then (on (+ $n 1) !inc))))\n"
+
+# The step's `=>` is spelled `\u{3d}>`, so that the check line's own `=>` is the only one
+# on the line.
+check tests:
+    Dump "test t, @w:\n    build\n        \u{3d}> expect Ui.Label(text=\"a\")" => "(module\n  (test t @w\n    (step build\n      (=> expect (record Ui.Label text=\"a\")))))\n"
+
+check recovery:
+    Errors "fn F x = (1 +\nlet y = 2" => [["expected an expression, found `let`"]]
+    Errors "let a = 1\n$x <- 2\nlet b = 3" => [["a bind or hold is a statement of a widget block: nothing at top level is built (Semantics ch. 6)"]]
+    Dump "let a = )\nlet b = 3" => "(module\n  (let b 3))\n"
+
+# A regular expression is a literal: its pattern and replacement as written, then its
+# flags (Semantics ch. 2).
+check regexes:
+    Dump "let r = %/a/i" => "(module\n  (let r (regex \"a\" \"i\")))\n"
+    Dump "let r = %/a\\/b/" => "(module\n  (let r (regex \"a\\\\/b\" \"\")))\n"
+    Dump "let r = %#/a/b/#m" => "(module\n  (let r (regex \"a/b\" \"m\")))\n"
+    Dump "let r = %/_/-/" => "(module\n  (let r (regex-replacement \"_\" \"-\" \"\")))\n"
+    Dump "let r = $%/a/" => "(module\n  (let r ($regex \"a\" \"\")))\n"
+    Dump "let n = Len [[%/a/,%/b/]]" => "(module\n  (let n (call Len (array (regex \"a\" \"\") (regex \"b\" \"\")))))\n"
+
+# `<:` is one token (Jimmy's ruling on map entries, 12 November): it puts a map entry. A
+# trait's method `<` is declared with a space before its colon, `< :`; written `<:` there,
+# it is a parse error whose message says so (Jimmy: "make someone put a space").
+check entries:
+    Dump "trait ^Ord a:\n    < : fn a, a -> Bool" => "(module\n  (trait ^Ord a\n    (sig (op <) (fn a a -> Bool))))\n"
+    Dump "F: fn Int -> Int\nfn F m = update m:\n    &_[1] <: nil" => "(module\n  (sig F (fn Int -> Int))\n  (fn F (params m)\n    (update m\n      (put (index &_ 1) nil))))\n"
+    Errors "trait ^Ord a:\n    <: fn a, a -> Bool" => [["`<:` puts a map entry: write `< :` for the method `<` and its colon"]]

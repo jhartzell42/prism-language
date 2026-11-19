@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 9 and rulings PL and HP: the host is the page's 0, a widget application whose primitive stands at its own 0 (`0/0.[p]/0`); the query is answered, so only the label is forwarded, and it reads the default.
+test answered_at_the_family_argument
+
+tick 0
+  added:
+    0/0.[1]/0: Ui.Label(text="told 7")

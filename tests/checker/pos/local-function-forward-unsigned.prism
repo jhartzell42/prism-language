@@ -1,0 +1,18 @@
+# A block's `fn` that calls one written below it, neither with a signature line and
+# neither calling itself (Semantics ch. 4, "Binding groups and cycles": a block's lines
+# are one group, in any order; Type System ch. 5, "A local `let` generalizes"). The use
+# above decided the type of the name bound ahead, and the checker then read the function
+# below as a signed one ("this clause takes one parameter; the signature has no").
+# Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+use Ui.*
+
+Twice: fn Nat -> Nat
+fn Twice n:
+    fn First k = Second k
+    fn Second k = k + k
+    First n
+
+@page: @unit
+@page:
+    Ui.Label($text=$"twice {Twice 4}")

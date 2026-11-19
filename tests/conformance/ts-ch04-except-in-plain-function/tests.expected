@@ -1,0 +1,19 @@
+# Derived by hand from Appendix B (`!Except` fires the left event in a tick in which the right does not fire) and Type System ch. 4 (the call in the plain function is not lifted; `10 +` is lifted over its firing): in the first tick both fire and nothing is heard; in the second the left fires alone, 10 + 1. Never run.
+test t
+
+tick 0
+  added:
+    0: Ui.Button(label="left")
+    1: Ui.Button(label="right")
+    2: Ui.Label(text="0: 0")
+
+tick 1
+  in:
+    0: click
+    1: click
+
+tick 2
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="1: 11")

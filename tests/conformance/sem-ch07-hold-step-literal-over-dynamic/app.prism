@@ -1,0 +1,27 @@
+# A hold whose value is a tuple that holds a dynamic, with its step written as a tuple
+# over another dynamic: `then (($b, "t")) on !swap` (Type System ch. 1: a dynamic of a
+# tuple that holds a dynamic is a type as any other; Semantics ch. 7: a hold keeps the
+# value its event gave it). The step's tuple holds `$b` itself, as the initial tuple
+# holds `$a`: `@Flatten` over its part follows `$a`, then `$b`.
+# sem-ch07-hold-of-tuple-holding-dynamic with the step a literal.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+$First: fn (($Nat, Text)) -> $Nat
+fn $First (($n, ignore)) = $n
+
+Named: fn (($Nat, Text)) -> Text
+fn Named ((ignore, name)) = name
+
+@page: @unit
+@page:
+    !inc <- Ui.Button($label=$"inc")                         # 0
+    !swap <- Ui.Button($label=$"swap")                       # 1
+    $a <- 0 then $a + 1 on !inc
+    $b <- 100 then $b + 1 on !inc
+    $held <- (($a, "s")) then (($b, "t")) on !swap
+    let $$first = $First $held
+    $shown <- @Flatten $$first
+    Ui.Label($text=$"{$shown} {Named $held}")                # 2

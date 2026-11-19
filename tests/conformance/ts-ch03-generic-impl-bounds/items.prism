@@ -1,0 +1,9 @@
+# `Items`, a child module of ts-ch03-generic-impl-bounds.
+emit r
+use Loud.*
+
+type Item = record:
+    n: Nat
+
+impl ^Loud Item:
+    fn Shout i = "item {i.n}"

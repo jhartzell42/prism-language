@@ -1,0 +1,19 @@
+# An impl gives each method its trait declares without a default body, and chooses each
+# associated type, and no associated type its trait does not declare (Type System ch. 3:
+# "An impl gives each method its definition lines", "an associated type, which each impl
+# chooses"). Written by Claude on the claude-bugs branch; subject to change.
+trait ^Box a:
+    type Item
+    Open: fn a -> Nat
+    Shut: fn a -> Nat
+    Weigh: fn a -> Nat
+    fn Weigh x = 0
+
+impl ^Box Nat:
+    type Item = Text
+    type Other = Nat
+    fn Open n = n
+
+impl ^Box Text:
+    fn Open t = 0
+    fn Shut t = 0

@@ -1,0 +1,6 @@
+# The tests of sem-ch07-flatten-global-dynamic.
+emit Ui.*
+use App.*
+
+test a_global_is_flattened, @main:
+    build

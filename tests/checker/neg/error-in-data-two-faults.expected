@@ -1,0 +1,4 @@
+tests/checker/neg/error-in-data-two-faults.prism:21: error[mismatch]: expected `[~Text]`, found `[~Nat]`
+        "{Firsts xs}{Texts xs}"
+                           ^^
+1 error

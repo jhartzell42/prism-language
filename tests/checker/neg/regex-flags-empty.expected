@@ -1,0 +1,4 @@
+tests/checker/neg/regex-flags-empty.prism:2: error[regex]: an empty flag group
+    let r = %/(?)/
+              ^
+1 error

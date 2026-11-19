@@ -1,0 +1,11 @@
+# The tests of sem-ch09-host-bundle-live-dynamic-answer.
+emit Ui.* | Pad.*
+use App.*
+
+test a_live_dynamic_part, @switched:
+    build
+        => expect Ui.Label(text="down: none")
+    click at 0
+        => expect Ui.Label(text="down: none")
+    compute
+        => expect Ui.Label(text="up: hello")

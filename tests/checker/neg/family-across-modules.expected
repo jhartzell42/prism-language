@@ -1,0 +1,4 @@
+tests/checker/neg/family-across-modules/lines.prism:5: error[collision]: the family `Ink` is declared in the root; every tag of a family is declared in its family's module
+    tag Ink.Line of Ink:
+    ^^^^^^^^^^^^^^^^^^^^
+1 error

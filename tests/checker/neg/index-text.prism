@@ -1,0 +1,3 @@
+# `index-text`: a text has no index; a position in it is a cursor (Appendix B, Text; round 4 TX).
+?Third: fn Text -> ?Char
+fn ?Third t = t[2]

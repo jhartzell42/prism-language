@@ -1,0 +1,13 @@
+# Derived by hand (ruling on field sigils): the note's dynamic text follows the count; each person is called by the nickname when there is one.
+test sigiled_fields
+
+tick 0
+  added:
+    0: Ui.Button(label="bump")
+    1: Pad.Note(text="Ann Bo 1")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Pad.Note(text="Ann Bo 2")

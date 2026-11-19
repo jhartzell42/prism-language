@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 3 (each impl chooses the associated type) and ch. 5 (an associated type at a known head normalizes to the impl's choice before comparing): `Open` of a crate is a `Nat`, of a jar a `Text`.
+test each_impl_chooses_its_item
+
+tick 0
+  added:
+    0: Ui.Label(text="5 figs!")

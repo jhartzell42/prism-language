@@ -1,0 +1,28 @@
+# `prompt-cycle`, through a function parameter: `@Loop` binds `!step` to what its
+# parameter `Pass` gives for `!fed`, `$seen` steps on `!step`, and `!fed` merges
+# `!Updated $total`, the update event of a dynamic lifted over the hold. A press would step
+# `$seen`, update `$total`, fire `!fed` and `!step`, and step `$seen` again in one tick (a
+# hold's update event fires in the tick of its step, Semantics ch. 7, R3).
+# Promptness is part of a function's type, and the check is local (Jimmy, 13 November,
+# ruling PT): `Pass`'s type marks its parameter `prompt`, so applying it is a same-tick link, and the
+# loop is found in `@Loop`'s own body whatever a caller gives it. The caller's lambda says
+# `prompt` too, as it must to stand where a prompt function is wanted; a lambda that is not
+# prompt given to a parameter that is not, and the loop's absence, is
+# pos/prompt-parameter-not-prompt.
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+# A plain function is always prompt (ruling PT); only a widget function says it in its type.
+emit Ui.*
+
+@Loop: fn (fn prompt !Nat -> @!Nat) -> @unit emit Ui.*
+fn @Loop Pass:
+    !press <- Ui.Button($label=$"press")
+    let !fed = (1 on !press) <| !Updated $total
+    !step <- Pass !fed
+    $seen <- 0 then $seen + 1 on !step
+    let $total = $seen * 2
+    Ui.Label($text=$"{$total}")
+
+@host: @unit
+@host:
+    @Loop \|prompt !passed| @ !passed

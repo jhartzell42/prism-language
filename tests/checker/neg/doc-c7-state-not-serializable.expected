@@ -1,0 +1,5 @@
+tests/checker/neg/doc-c7-state-not-serializable.prism:26: error[no-impl]: `^SerializableDocument` asks `State Game: ^SerializableValue`, and there is no impl of `^SerializableValue` for `Board`
+    impl ^SerializableDocument Game:
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: write `impl ^SerializableValue Board`
+1 error

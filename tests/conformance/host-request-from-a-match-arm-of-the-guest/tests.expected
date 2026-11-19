@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 9 (a request at n is answered at n+1) and rulings PL and HP: the `for` is the page's 0 and its one row's key 1; the host is the row's 0, its primitive its own 0 (`0.[1].0/0.[p]/0`); the guest's `match` is its place 0, the arm's places 0.0, 0.1 and 0.2; the request is answered, so only the button and the label are forwarded.
+test answered_in_the_arm
+
+tick 0
+  added:
+    0.[1].0/0.[0.0]/0: Ui.Button(label="press")
+    0.[1].0/0.[0.2]/0: Ui.Label(text="got 0")
+
+tick 1
+  in:
+    0.[1].0/0.[0.0]/0: click
+
+tick 2
+  changed:
+    0.[1].0/0.[0.2]/0: Ui.Label(text="got 5")

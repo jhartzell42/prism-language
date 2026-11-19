@@ -1,0 +1,24 @@
+# Semantics Appendix B, Regular expressions: `Matches` by the iteration rule, every
+# search starting where the last match ended and no empty match reported where the
+# previous one ended; `?Find` leftmost-first.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+test mod Tests
+
+# Every match's bytes, `a-b`, in order.
+All: fn [Match] -> Text
+fn All ms = Spaced (Each ms, \|m| "{At m.front}-{At m.back}")
+
+# A match as tests/regex/corpus.txt writes it: each numbered group's bytes `a-b`, group 0
+# (the whole match) first and `nil` for a group that took no part, then each named group
+# that took part, by name, `name=a-b`.
+Spans: fn ?Match -> Text
+fn Spans nil = "nil"
+fn Spans (? m) = Spaced (Append (Each m.groups, GroupSpan), (Fold m.named, [[]], \|acc, k, g| Push acc, "{k}={At g.front}-{At g.back}"))
+
+GroupSpan: fn ?Group -> Text
+fn GroupSpan nil = "nil"
+fn GroupSpan (? g) = "{At g.front}-{At g.back}"
+
+# The texts with a space between each two.
+Spaced: fn [Text] -> Text
+fn Spaced ts = Fold ts, "", \|acc, t| if acc == "": t else: "{acc} {t}"

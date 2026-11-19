@@ -1,0 +1,18 @@
+# A widget gives back a plain function over its hold (`@ \|k| $count`), and another
+# widget reads it: the function value built in the build captures the hold's live
+# dynamic, never a read through `self` (rustc E0424). No blueprint and no host.
+# Written by Claude, 15 November 2026, on the claude-self-hosting branch. Subject to change.
+emit Ui.*
+test mod Tests
+@Shows: fn prompt (fn Nat -> $Nat), Nat -> @unit emit Ui.*
+fn @Shows Read, k:
+    Ui.Label($text=$"shows {Read k}")
+@Counter: fn prompt !Ui.Click -> @(fn Nat -> $Nat)
+fn @Counter !add:
+    $count <- 0 then $count + (1 on !add)
+    @ \|k| $count
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")
+    Read <- @Counter !add
+    @Shows Read, 1

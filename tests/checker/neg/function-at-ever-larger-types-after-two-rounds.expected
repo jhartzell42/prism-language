@@ -1,0 +1,4 @@
+tests/checker/neg/function-at-ever-larger-types-after-two-rounds.prism:6: error[grows-without-end]: `Swapped` calls itself at `[a]` for `a`: a type that grows without end
+        ? less: Swapped ys, [[xs]], less
+                ^^^^^^^
+1 error

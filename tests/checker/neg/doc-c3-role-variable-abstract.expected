@@ -1,0 +1,4 @@
+tests/checker/neg/doc-c3-role-variable-abstract.prism:32: error[mismatch]: expected `Request d r`, found `Raise`
+    fn Built document, request = Raise 1
+                                 ^^^^^^^
+1 error

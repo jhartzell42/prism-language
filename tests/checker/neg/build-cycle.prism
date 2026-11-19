@@ -1,0 +1,13 @@
+# Two `let`s of a block that read each other have no order to be computed in (Semantics
+# ch. 4, binding groups: a line may read a name bound below it, but values that need each
+# other at the build are a cycle). prismc's back end refuses it today ("lines that read
+# each other at the build"); the checker should. Written by Claude on the claude-lowering
+# branch; subject to change.
+emit Ui.*
+use Ui.*
+
+@page: @unit
+@page:
+    let a = b + 1
+    let b = a + 1
+    Ui.Label($text=$"{a}")

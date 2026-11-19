@@ -1,0 +1,17 @@
+# A map of blueprints read as data (`Keys $seats`) and fed back into the map in the same
+# tick is a cycle: reading the map's keys is a data edge, though changing the map only
+# builds and ends guests (ownership, prompt in nothing). Must stay refused.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+@Named: fn Text -> @unit emit Ui.*
+fn @Named name:
+    Ui.Label($text=$ name)
+
+Grown: fn [Text] -> (Text ==> $@(@unit emit Ui.*))
+fn Grown names = Map (Each (Push names, "more"), \|n| ((n, $ (@Named n))))
+
+@room: @unit emit Ui.*
+@room:
+    let $seats = Grown (Keys $seats)
+    Ui.Label($text=$"{Size $seats} seated")

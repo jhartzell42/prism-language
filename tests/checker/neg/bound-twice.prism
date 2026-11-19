@@ -1,0 +1,30 @@
+# `collision`: a name is bound once where it is bound. A parameter list, a pattern and a
+# lambda's parameters bind a name once; a construction names a field once; a module
+# declares a value-level name once, a constructor's or a function's or a `let`'s. rustc
+# refuses what the first two would emit. Written by Claude on the claude-bugs branch;
+# subject to change.
+type Pair = record:
+    left: Nat
+    right: Nat
+
+type Coin = choice:
+    Heads
+    Tails
+
+Heads: fn Nat -> Nat
+fn Heads n = n
+
+let limit = 3
+let limit = 4
+
+Make: fn Nat -> Pair
+fn Make n = Pair(left=n, left=n, right=n)
+
+Sum: fn Nat, Nat -> Nat
+fn Sum x, x = x + x
+
+Both: fn ((Nat, Nat)) -> Nat
+fn Both ((a, a)) = a
+
+Folded: fn [Nat] -> Nat
+fn Folded xs = Fold xs, 0, \|y, y| y

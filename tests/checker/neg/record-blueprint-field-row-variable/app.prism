@@ -1,0 +1,14 @@
+# A record's blueprint field in a module that emits a row variable (Type System ch. 2,
+# "Rows in `emit` and in signatures": a blueprint type with no `emit` of its own emits
+# the row of the scope it is written in, and a module's `emit r` is "a variable of each
+# signature in it, quantified per signature"): a record is no signature and has no row of
+# its own to quantify, so the field's row would be a variable nothing binds. A field that
+# writes its row with `emit` is fine. The expected text is derived by hand from the book.
+# Written by Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+mod Cards
+use Ui.*
+
+@main: @unit
+@main:
+    Ui.Label($text=$"x")

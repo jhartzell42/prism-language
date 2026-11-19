@@ -1,0 +1,24 @@
+# A blueprint taken out of a value and applied: a plain function gives a blueprint inside
+# an option, and the arm of a building `match` that takes it out builds it (Semantics
+# ch. 4: a building `match`'s arm "is fixed for the life of the block and adds no path
+# segment"; ch. 8: "a blueprint builds nothing until a block applies it", at the applying
+# block's next positions; Type System ch. 2: a blueprint is an opaque handle and still a
+# value). Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Pair: @unit
+@Pair:
+    Ui.Label($text=$"left")
+    Ui.Label($text=$"right")
+
+@Page: fn Bool -> @unit
+fn @Page b:
+    match ?Pick b, @Pair:                                        # 0 and 1, or 0
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    Ui.Label($text=$"end")                                       # 2, or 1

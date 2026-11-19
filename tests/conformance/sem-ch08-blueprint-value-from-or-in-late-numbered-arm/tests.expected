@@ -1,0 +1,16 @@
+# Derived by hand from Semantics ch. 8 (applying a blueprint value builds it), ch. 4 and ruling PL (a path is a list of lists, one per widget application; a building arm extends its list at the arm's position): loud gives the inner `if`'s 3, so `@Wide 3` at 0 builds "one 3" and "two 3" in its own list, the `if` at 1 applies the blueprint `Or` picks, `@One`, at its arm's 0 ("one" at `1.0/0`), and the inner `if` at its arm's 1 builds its label at `1.1.0`; soft gives 20 and builds nothing in its arm.
+test loud
+
+tick 0
+  added:
+    0/0: Ui.Label(text="one 3")
+    0/1: Ui.Label(text="two 3")
+    1.0/0: Ui.Label(text="one")
+    1.1.0: Ui.Label(text="inner")
+
+test soft
+
+tick 0
+  added:
+    0/0: Ui.Label(text="one 20")
+    0/1: Ui.Label(text="two 20")

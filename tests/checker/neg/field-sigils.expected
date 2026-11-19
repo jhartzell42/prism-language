@@ -1,0 +1,5 @@
+tests/checker/neg/field-sigils.prism:5: error[field-sigils]: the field `text` writes `$` on its type; a field's sigils stand on its name
+        text: $Text
+        ^^^^^^^^^^^
+  fix: write `$text: ` and the type without them
+1 error

@@ -1,0 +1,4 @@
+tests/checker/neg/function-at-ever-larger-types-through-let.prism:4: error[grows-without-end]: `Deep` calls itself through `Wrapped` at `[a]` for `a`: a type that grows without end
+    let Wrapped = \|xs, less| Deep [[xs]], less
+                              ^^^^
+1 error

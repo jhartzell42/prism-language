@@ -1,0 +1,4 @@
+tests/checker/neg/regex-group-open.prism:2: error[regex]: a group opened here is never closed
+    let r = %/(?/
+              ^
+1 error

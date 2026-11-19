@@ -1,0 +1,6 @@
+# The tests of sem-ch09-host-widget-answer-hosted.
+emit Ui.*
+use App.*
+
+test a_widget_answers_a_place_under_a_host, @outer:
+    build

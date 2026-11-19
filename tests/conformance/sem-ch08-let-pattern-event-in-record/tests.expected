@@ -1,0 +1,13 @@
+# Derived by hand from Semantics ch. 4 (`let` binds by any pattern that cannot fail; a `let` takes no position): the pattern's event is the button's.
+test the_event_field_is_bound
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="k: 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="k: 1")

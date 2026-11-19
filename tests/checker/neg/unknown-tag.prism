@@ -1,0 +1,12 @@
+# An element of a tag nothing declares is refused by the checker, as a line and as a
+# value, so the back end's guard "an element of an unknown tag" (lower/node/elements.prism)
+# is not reached. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+use Ui.*
+
+@page: @unit
+@page:
+    Ui.Knob($label=$"turn")
+    !go <- Ui.Dial(name="d")
+    let made = Ui.Slider($text=$"x")
+    Ui.Label($text=$"x")

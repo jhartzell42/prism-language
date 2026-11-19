@@ -1,0 +1,12 @@
+# A function that calls itself with its two type parameters exchanged reaches two sets
+# of types and no more: legal (ruling PG; Type System ch. 2, recursion at another type).
+Rotated: fn [a], [b], Nat -> Nat
+fn Rotated xs, ys, more = match more -? 1:
+    ? less: Rotated ys, xs, less
+    nil: (Len xs) + Len ys
+
+# One that grows once and then stays: `a` becomes `[b]`, `b` becomes `Nat`.
+Settled: fn [a], [b], Nat -> Nat
+fn Settled xs, ys, more = match more -? 1:
+    ? less: Settled [[ys]], [[less]], less
+    nil: (Len xs) + Len ys

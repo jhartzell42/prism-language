@@ -1,0 +1,7 @@
+# The tests of sem-appB-turn-value.
+emit Ui.*
+use App.*
+
+test a_turn_is_built_and_matched, @main:
+    build
+        => expect Ui.Label(text="last: done 7 more done 5 2")

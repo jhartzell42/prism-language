@@ -1,0 +1,3 @@
+# `mark-function`: a function's name shows the outermost mark of what it returns.
+Half: fn Int -> ?Int
+fn Half n = n / 2

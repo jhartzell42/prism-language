@@ -1,0 +1,9 @@
+# The tests of sem-ch04-building-if-no-else.
+emit Ui.*
+use App.*
+
+test the_arm_is_built, @Panel True:
+    build
+
+test nothing_is_built, @Panel False:
+    build

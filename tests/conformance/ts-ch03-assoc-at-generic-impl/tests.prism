@@ -1,0 +1,7 @@
+# The tests of ts-ch03-assoc-at-generic-impl (Type System chapter 3).
+emit Ui.*
+use App.*
+
+test assoc_at_generic_impl, @main:
+    build
+        => expect Ui.Label(text="a [[1, 3]]")

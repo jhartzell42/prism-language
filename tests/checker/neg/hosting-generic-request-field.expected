@@ -1,0 +1,5 @@
+tests/checker/neg/hosting-generic-request-field/app.prism:19: error[field-variable]: the type variable `r` in the field `latest` of `Seat.Request` does not appear in the tag's output, `!Response`
+        $?latest: ((Nat, r))
+                         ^
+  fix: put `r` in the output, or give the field a type without it
+1 error

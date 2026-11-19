@@ -1,0 +1,11 @@
+# `use` of a module the program does not have is reported at its `use` line (Semantics
+# ch. 6), not at the file's first line. The expected text is derived by hand. Written by
+# Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+use Ui.*
+use Nowhere
+use Nowhere.Else.*
+
+@main: @unit
+@main:
+    Ui.Label($text=$"x")

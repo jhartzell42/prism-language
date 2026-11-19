@@ -1,0 +1,4 @@
+tests/checker/library-broken/broken.prism:5: error[mismatch]: in the standard library's module `Broken`: expected `Text`, found `Nat`
+    fn Off n = n
+               ^
+1 error

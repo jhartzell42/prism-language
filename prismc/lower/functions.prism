@@ -1,0 +1,808 @@
+# `Lower.Functions`, a child module of `Lower`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Lower.*
+use Lower.Types.*
+use Lower.Expr.*
+use Lower.Patterns.*
+use Lower.Templates.*
+use Lower.Jobs.*
+use Lower.Program.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Check.Typed.*
+use Check.Typed.Print.*
+use Lower.Model.*
+use Lower.Node.*
+use Lower.Node.Def.*
+use Lower.Node.Elements.*
+use Lower.Node.Static.*
+use Lower.Node.Dynamics.*
+use Lower.Node.Finish.*
+use Lower.Node.Keyed.*
+use Lower.Node.Switch.*
+
+# ---------------------------------------------------------------------------------------
+# Functions (claude/backend.md: a plain function is a Rust `fn` taking references, its
+# clauses one `match`; generics are Rust's, monomorphized by rustc, doubt MO)
+# ---------------------------------------------------------------------------------------
+
+# A trait bound as Rust's: `^Eq` is `Eq`, `^Ord` `Ord` (a `Float` is both, by its bits:
+# `prism_rtl::Float`), `^Debug` the printer's, `^Num` the prelude's.
+BoundOf: fn Lx, Text -> [Text]
+fn BoundOf lx, "Prelude.Eq" = [["std::Eq"]]
+fn BoundOf lx, "Prelude.Ord" = [["std::Ord"]]
+fn BoundOf lx, "Prelude.Debug" = [["rt::Show"]]
+fn BoundOf lx, "Prelude.Display" = [["rt::Display"]]
+fn BoundOf lx, "Prelude.Num" = [["rt::Num"]]
+fn BoundOf lx, "Prelude.Pod" = [["rt::ToPod", "rt::FromPod"]]
+fn BoundOf lx, cls = match lx.g.traits[cls]:
+    ? tr: [[(PathIn lx, tr.home, (TraitName cls))]]
+    nil: [[]]
+
+# A scheme's type variables as Rust generics with their bounds. A variable a map is keyed
+# by is `Ord` too, whether or not the scheme says `^Ord`: a map's keys are ordered (Semantics
+# App. B, "Maps"), and the runtime's `Map` asks it of every key type.
+SchemeGenerics: fn Lx, Scheme -> [((Text, [Text]))]
+fn SchemeGenerics lx, sc = Each sc.qs, \|q|
+    let bs = Fold sc.bounds, [["std::Clone"]], \|acc, ((v, cls))| if v == q: UnionTexts acc, (BoundOf lx, cls) else: acc
+    let keyed = if KeysBy sc.ty, q: UnionTexts bs, [["std::Ord"]] else: bs
+    ((Camel q, keyed))
+
+# Whether the type variable `q` is a map's key anywhere in a type.
+KeysBy: fn Ty, Text -> Bool
+fn KeysBy t, q = match t:
+    TyMap k, v: (k == TyQ q) or (KeysBy k, q) or (KeysBy v, q)
+    TyCon ignore, ts: Fold ts, False, \|found, x| found or KeysBy x, q
+    TyFn ignore, ps, r, prompts: (Fold ps, False, \|found, x| found or KeysBy x, q) or (KeysBy r, q)
+    TyTuple ts: Fold ts, False, \|found, x| found or KeysBy x, q
+    TyArray x: KeysBy x, q
+    TySig ignore, x: KeysBy x, q
+    TyAt x, ignore: KeysBy x, q
+    otherwise: False
+
+# The parameters of a function's clauses: a name every clause binds at a position names
+# the parameter; any other position is matched, named after its type.
+ParamNames: unbounded fn Lx, [FnClause], [OutTy] -> [((Text, Bool))]
+fn ParamNames lx, clauses, pts = Each (Range0 (Len pts)), \|i|
+    let names = Each clauses, \|c| PlainBinder lx, (Or c.params[i], dummyPat)
+    let first = Or names[0], ""
+    let same = first != "" and Fold names, True, \|ok, n| ok and n == first
+    let span = match (Or (Or clauses[0], dummyClause).params[i], dummyPat).kind:
+        PName n: n.span
+        otherwise: Range(start=0, end=0, origin=InSource)
+    if same: (((LocalNameAt lx, first, span), False)) else: (((ParamWord (Or pts[i], OutUnit), i), True))
+
+# The binder a parameter pattern is, when it is one: its name with sigils.
+PlainBinder: fn Lx, Pattern -> Text
+fn PlainBinder lx, p = match p.kind:
+    PName n:
+        let ((?qk, why)) = ResolveValue lx.g, lx.home, n
+        let isCtor = match ?qk:
+            ? qk: (HasKey lx.g.ctors, qk) and ((IsUpperText (Base (SNameKey n))) or IsUnitCtor lx, qk)
+            nil: False
+        if isCtor: "" else: SNameKey n
+    PGroup q: PlainBinder lx, q
+    otherwise: ""
+
+# A matched parameter's name: its type's (`term` for a `Term`), else `arg`.
+ParamWord: fn OutTy, Nat -> Text
+fn ParamWord t, i:
+    let base = match t:
+        OutNamed n, ignore: Snake (RefLast n)
+        OutText: "text"
+        OutNat: "n"
+        OutInt: "i"
+        OutArray ignore: "xs"
+        OutMap ignore, ignore: "map"
+        OutOpt ignore: "opt"
+        otherwise: "arg"
+    "{base}{i}"
+
+# A parameter's type as its body sees it: its value, or in a function that takes time whole
+# the dynamic or event itself.
+PeelUnlessWhole: fn Lx, Ty -> Ty
+fn PeelUnlessWhole lx, t = if lx.whole: t else: Peel t
+
+# A function's clauses as one body over its parameters (each a reference, `ref`).
+ClausesBody: unbounded fn Lx, Env, [FnClause], [((Text, Bool))], [Ty], (fn Lx, Env, FnBody -> Ex), Text, OutTy, ?Ty -> Ex
+fn ClausesBody lx, env, clauses, names, ptys, Body, label, t, ?result:
+    let env1 = Fold (Range0 (Len names)), env, \|en, i|
+        let ((rs, matched)) = Or names[i], (("", True))
+        if matched: en
+        else: Bind en, (PlainBinder lx, (Or (Or clauses[0], dummyClause).params[i], dummyPat)), (BnLocal (XVar rs), ByRef, (OutTyOf lx, (PeelUnlessWhole lx, (Or ptys[i], TyErr))))
+    let scrutIx = Filter (Range0 (Len names)), \|i| match names[i]:
+        ? ((ignore, True)): True
+        otherwise: False
+    if (Len scrutIx) == 0:
+        let c = Or clauses[0], dummyClause
+        Body lx, env1, c.body
+    else:
+        let scrut = match scrutIx:
+            [[i]]: XVar (Or (Each names, \|((n, ignore))| n)[i], "arg")
+            otherwise: XTuple (Each scrutIx, \|i| XVar (Or (Each names, \|((n, ignore))| n)[i], "arg"))
+        let arms = Each (Range0 (Len clauses)), \|ci|
+            let c = Or clauses[ci], dummyClause
+            # (a clause that fixes a kinded variable by its `Fixed<<Variant>>` pattern reads
+            # its body at that variant, `FixedClauseLx`: a parameter of an associated type at
+            # that variable, plain data in the signature, is read back at the variant's own
+            # type, its pattern matched against the value recoded, after every other
+            # condition, the variant's among them; tally's `Step`, c6's `Stepping`, c8's
+            # derived `Step`)
+            let lxc = FixedClauseLx lx, c.params, ptys
+            let Recoded = \|i| (lxc.subst != lx.subst) and (HasOpenIndexedAssoc (Peel (Or ptys[i], TyErr))) and not (HasOpenIndexedAssoc (SubstTy lxc, (Peel (Or ptys[i], TyErr))))
+            let RecodeAt = \|i, x| XCallAt (HelperRef "recode"), [[(OutTyOf lxc, (SubstTy lxc, (Peel (Or ptys[i], TyErr))))]], [[x]]
+            let pos = Each scrutIx, \|i| if Recoded i: RustPat lxc, (Or c.params[i], dummyPat), (SubstTy lxc, (Peel (Or ptys[i], TyErr))), Owned, "{label}{ci}_{i}" else: RustPat lxc, (Or c.params[i], dummyPat), (SubstTy lxc, (Or ptys[i], TyErr)), ByRef, "{label}{ci}_{i}"
+            let pas = Each (Range0 (Len scrutIx)), \|k| if Recoded (Or scrutIx[k], 0): PaBind "{label}{ci}_{Or scrutIx[k], 0}_pod" else: (Or pos[k], PatOnly PaWild).pa
+            let pa = match pas:
+                [[one]]: one
+                otherwise: PaTuple pas
+            # (the variant's own condition before any other: a pattern under it may read a
+            # field back at the variant's type, `Declined (StopsAt most)` of a `Response d r`)
+            let Fixes = \|k| match (Or c.params[(Or scrutIx[k], 0)], dummyPat).kind:
+                PTypeArgs ignore, ignore2: True
+                otherwise: False
+            let fixedConds = Fold (Range0 (Len scrutIx)), [[]], \|acc, k| if (Fixes k) and not (Recoded (Or scrutIx[k], 0)): Append acc, (Or pos[k], PatOnly PaWild).conds else: acc
+            let otherConds = Fold (Range0 (Len scrutIx)), [[]], \|acc, k| if (Fixes k) or Recoded (Or scrutIx[k], 0): acc else: Append acc, (Or pos[k], PatOnly PaWild).conds
+            let plainConds = Append fixedConds, otherConds
+            let recodedConds = Fold (Range0 (Len scrutIx)), [[]], \|acc, k| if Recoded (Or scrutIx[k], 0): Append (Push acc, (CcLet (Or pos[k], PatOnly PaWild).pa, (RecodeAt (Or scrutIx[k], 0), (XVar "{label}{ci}_{Or scrutIx[k], 0}_pod")))), (Or pos[k], PatOnly PaWild).conds else: acc
+            let conds = Append plainConds, recodedConds
+            let binds = Fold pos, [[]], \|acc, o| Append acc, o.binds
+            # (a parameter bound by name alone, of such a type, read back at the variant's)
+            let rebound = Fold (Range0 (Len names)), [[]], \|acc, i| match names[i]:
+                ? ((rs, False)): if Recoded i: Push acc, (((PlainBinder lx, (Or c.params[i], dummyPat)), (BnLocal (RecodeAt i, (XVar rs)), Owned, (OutTyOf lxc, (SubstTy lxc, (Peel (Or ptys[i], TyErr))))))) else: acc
+                otherwise: acc
+            let value = Body lxc, (BindAll (BindAll env1, rebound), binds), c.body
+            # (and a result of such a type given back as the signature holds it, plain data)
+            # (the body's value is of the result's type at the variant, said so Rust reads
+            # every arm of it there: `Stepped<Race, NotYourMove>` for a signature's
+            # `Stepped<Race, Pod>`, doc-derive-via-with-role-indexed-equalities)
+            let atVariant = match ?result:
+                ? r: OutTyOf lxc, (SubstTy lxc, (Peel r))
+                nil: t
+            let answered = if lxc.subst != lx.subst and atVariant != t: XCallAt (HelperRef "recode"), [[t]], [[(XRef (XBlock [[(DoLet (PaTyped (PaBind "at_variant"), atVariant), value)]], (XVar "at_variant")))]] else: value
+            XArm(pat=pa, conds=conds, body=answered)
+        Own (ArmsValue scrut, arms, "'{label}", t)
+
+# A clause's lowering with each kinded variable its `Fixed<<Variant>>` parameter pattern
+# fixes given that variant (ruling PK, ruling VO), as an instantiation gives it.
+FixedClauseLx: unbounded fn Lx, [Pattern], [Ty] -> Lx
+fn FixedClauseLx lx, params, ptys = Fold (Range0 (Len params)), lx, \|l, i| match (((Or params[i], dummyPat).kind, Peel (Or ptys[i], TyErr))):
+    (((PTypeArgs ignore, tys), (TyCon "Prelude.Fixed", [[(TyQ q)]]))): FixedTo l, q, tys
+    (((PTypeArgs ignore, tys), (TyCon "Prelude.Fixed", [[(TyRigid q)]]))): FixedTo l, q, tys
+    otherwise: l
+
+FixedTo: unbounded fn Lx, Text, [Type] -> Lx
+fn FixedTo lx, q, tys = match (Or tys[0], Type(kind=TAbsent, span=Range(start=0, end=0, origin=InSource))).kind:
+    TName n, [[]]: match ?RoleConstructor lx.g, lx.home, (Dotted n.path):
+        ? k: update lx:
+            &_.subst <= Insert &_.subst, q, (TyRole k)
+        nil: lx
+    otherwise: lx
+
+let dummyClause = FnClause(name=(DefOp "", Range(start=0, end=0, origin=InSource)), params=[[]], body=(BodyExpr (Expr(kind=EError, span=Range(start=0, end=0, origin=InSource)))), span=Range(start=0, end=0, origin=InSource))
+
+FnBodyValue: unbounded fn Lx, Env, FnBody -> Ex
+fn FnBodyValue lx, env, (BodyExpr x) = Own (ValueOf lx, env, x)
+fn FnBodyValue lx, env, (BodyBlock b) = Own (BlockValue lx, env, b)
+
+# A function's parameter types and result in its scheme. A function that gives a blueprint
+# is not lifted over its `!` parameters: it takes each as an event value (`?Boxed p, e, !in`
+# builds `@ !Filter (?ClickTo p, !in)`).
+SignatureTys: fn Scheme -> (([Ty], Ty))
+fn SignatureTys sc:
+    let ((ptys0, res)) = match sc.ty:
+        TyFn ignore, ps, r, prompts: ((ps, r))
+        other: (([[]], other))
+    let ptys = if HasBlueprint res: Each ptys0, \|p| EventParam p else: ptys0
+    ((ptys, res))
+
+# The same as the target types them: peeled, or whole for a function that takes its time
+# whole (`IsWholeFn`).
+SignatureOut: unbounded fn Lx, Text, Scheme -> (([OutTy], OutTy))
+fn SignatureOut lx, qk, sc:
+    let ((ptys, res)) = SignatureTys sc
+    let whole = IsWholeFn lx, qk
+    let pts = Each ptys, \|p| OutTyOf lx, (if whole: p else: Peel p)
+    let ret = OutTyOf lx, (if whole: res else: Peel res)
+    ((pts, ret))
+
+# The type parameters Rust infers from a value of the type: those outside every
+# associated type's subject (`<D as Machine_t>::State` tells nothing of `D`).
+TyParamsDeduced: fn OutTy -> [Text]
+fn TyParamsDeduced t = match t:
+    OutAssoc ignore, ignore2, ignore3: [[]]
+    OutGen n: [[n]]
+    OutNamed ignore, ts: Fold ts, [[]], \|acc, x| UnionTexts acc, (TyParamsDeduced x)
+    OutTuple ts: Fold ts, [[]], \|acc, x| UnionTexts acc, (TyParamsDeduced x)
+    OutFn ts, r: Fold ts, (TyParamsDeduced r), \|acc, x| UnionTexts acc, (TyParamsDeduced x)
+    OutJobFn a, r: UnionTexts (TyParamsDeduced a), (TyParamsDeduced r)
+    OutMap k, v: UnionTexts (TyParamsDeduced k), (TyParamsDeduced v)
+    OutOpt x: TyParamsDeduced x
+    OutRes x: TyParamsDeduced x
+    OutArray x: TyParamsDeduced x
+    OutJob x: TyParamsDeduced x
+    OutEvent x: TyParamsDeduced x
+    OutDyn x: TyParamsDeduced x
+    OutRc x: TyParamsDeduced x
+    OutRef x: TyParamsDeduced x
+    OutRefMut x: TyParamsDeduced x
+    OutHold x: TyParamsDeduced x
+    otherwise: TyParamsIn t
+
+# A function's type parameters, in its scheme's order. A type variable the Rust signature
+# erases (a supplier's `o`, under a blueprint and a live element) is no Rust type parameter:
+# rustc could not infer it.
+FnGenerics: unbounded fn Lx, Text, Scheme -> [((Text, [Text]))]
+fn FnGenerics lx, qk, sc:
+    let ((pts, ret)) = SignatureOut lx, qk, sc
+    let used = Fold (Push pts, ret), [[]], \|acc, t| UnionTexts acc, (TyParamsIn t)
+    # (and one its body needs for its bounds though no type the signature lowers names
+    # it, `Told: forall d. fn SeatKey d -> Text` calling `Described<<d>>`: `SeatKey d` is
+    # packed; each call gives it, `?TypeArgsAt`)
+    Filter (SchemeGenerics lx, sc), \|((g, ignore))| (HasText used, g) or Fold sc.bounds, False, \|f, ((v, ignore2))| f or (Camel v) == g
+
+# A plain function: its scheme's types, its clauses as a `match`.
+FnDefOf: unbounded fn Lx, Text, [FnClause], Scheme -> FnDef
+fn FnDefOf lx, qk, clauses, sc = FnDefIn lx, qk, qk, clauses, sc
+
+# `FnDefOf` for a body that is not the definition of the function's own name: an impl's
+# method and a trait's default are lowered under their trait's method's name, and are
+# definitions of their own among the program's instantiations (`definition`, their
+# `InstanceKey`).
+FnDefIn: unbounded fn Lx, Text, Text, [FnClause], Scheme -> FnDef
+fn FnDefIn lx, definition, qk, clauses, sc:
+    let ((ptys, res)) = SignatureTys sc
+    # A plain function is lifted: its `$` and `!` values are read at the caller's read point
+    # (gap LE), so its body has their values. One whose parameters or result hold a dynamic
+    # or an event below the top takes and gives them whole, `Dynamic`s and `Event`s (Type
+    # System ch. 4, Application; gap LF): its body lifts by mapping them.
+    let whole = IsWholeFn lx, qk
+    # each kinded type variable's variant, a hidden leading parameter (ruling PK; `ValueOf
+    # <<r>>`, `Fixed<<r>>` read it), given at each call (`KindArgs`)
+    let kinds = KindsOf lx, qk
+    let lxb = update lx:
+        &_.whole <= whole
+        &_.noCx <= True
+        &_.inDefinition <= definition
+        &_.kinded <= Fold kinds, &_.kinded, \|m, ((r, kindChoice))| Insert m, r, (((KindParamName r), kindChoice))
+    let ((pts, ret)) = SignatureOut lx, qk, sc
+    let names = ParamNames lx, clauses, pts
+    let body = ClausesBody lxb, emptyEnv, clauses, names, ptys, FnBodyValue, "c", ret, (? res)
+    let hidden = Each kinds, \|((r, ignore))| (((KindParamName r), (OutRef OutNat)))
+    let params = Append hidden, (Each (Range0 (Len pts)), \|i| (((Or (Each names, \|((n, ignore))| n)[i], "arg"), (OutRef (Or pts[i], OutUnit)))))
+    # (each type parameter an associated type's projection names is bounded by that
+    # associated type's trait, `D: Document_t` for `<D as Document_t>::State`: Prism's
+    # `?StateOf: fn Kept d -> ?(State d)` asks no bound of its own, Rust's does)
+    let generics = Each (FnGenerics lx, qk, sc), \|((g, bs))| ((g, (UnionTexts bs, (ProjectionBounds lx, sc.ty, g))))
+    FnDef(name=(Or lx.rsNames[qk], (Snake (BareName qk))), generics=generics, params=params, ret=ret, body=body, doc=(SignatureText lx, qk), public=True, wheres=(TraitWheres lx, sc))
+
+# The traits of the associated types whose subject is the type variable named `g` (as
+# Rust names it) in a type: the bounds Rust needs to project them.
+ProjectionBounds: unbounded fn Lx, Ty, Text -> [Text]
+fn ProjectionBounds lx, t, g = match t:
+    TyAssoc tr, ignore, a, indices:
+        let own = match a:
+            TyQ q: if (Camel q) == g and (Len indices) == 0: BoundOf lx, tr else: [[]]
+            TyRigid q: if (Camel q) == g and (Len indices) == 0: BoundOf lx, tr else: [[]]
+            otherwise: [[]]
+        Fold indices, (UnionTexts own, (ProjectionBounds lx, a, g)), \|acc, x| UnionTexts acc, (ProjectionBounds lx, x, g)
+    TyCon ignore, ts: Fold ts, [[]], \|acc, x| UnionTexts acc, (ProjectionBounds lx, x, g)
+    TyTuple ts: Fold ts, [[]], \|acc, x| UnionTexts acc, (ProjectionBounds lx, x, g)
+    TyArray x: ProjectionBounds lx, x, g
+    TyMap k, v: UnionTexts (ProjectionBounds lx, k, g), (ProjectionBounds lx, v, g)
+    TySig ignore, x: ProjectionBounds lx, x, g
+    TyAt x, ignore: ProjectionBounds lx, x, g
+    TyFn ignore, ps, r, prompts: Fold ps, (ProjectionBounds lx, r, g), \|acc, x| UnionTexts acc, (ProjectionBounds lx, x, g)
+    otherwise: [[]]
+
+# The `where`s on associated types that a function's trait bounds bring, each trait's
+# own and its superclasses' (`trait ^SerializableDocument d where State d:
+# ^SerializableValue`): at the bounded variable, `<D as Document_t>::State:
+# SerializableValue_t` (doc-bound-on-associated-type-from-trait-where).
+TraitWheres: unbounded fn Lx, Scheme -> [((OutTy, [Text]))]
+fn TraitWheres lx, sc = Fold sc.bounds, [[]], \|acc, ((q, cls))| Fold (TraitsAbove lx, [[cls]], 8), acc, \|acc2, c| match lx.g.traits[c]:
+    ? tr: Fold (Filter tr.headBounds, \|((h, ignore))| IsPlainProjection h), acc2, \|acc3, ((h, b))| Push acc3, (((OutTyOf lx, (Instantiated h, [[tr.param]], [[(TyQ q)]])), (BoundOf lx, b)))
+    nil: acc2
+
+# A trait and the traits above it, `fuel` rounds at most.
+TraitsAbove: unbounded fn Lx, [Text], Nat -> [Text]
+fn TraitsAbove lx, cs, fuel = match fuel -? 1:
+    nil: cs
+    ? less:
+        let more = Fold cs, cs, \|acc, c| match lx.g.traits[c]:
+            ? tr: UnionTexts acc, tr.supers
+            nil: acc
+        if (Len more) == (Len cs): cs else: TraitsAbove lx, more, less
+
+# The type parameters a Rust type names.
+TyParamsIn: fn OutTy -> [Text]
+fn TyParamsIn t = match t:
+    OutGen n: [[n]]
+    # (one only under an associated type, `<D as Machine_t>::State`, is a parameter all
+    # the same; Rust cannot infer it there, `TyParamsDeduced`)
+    OutAssoc ignore, ignore2, x: TyParamsIn x
+    OutNamed ignore, ts: Fold ts, [[]], \|acc, x| UnionTexts acc, (TyParamsIn x)
+    OutTuple ts: Fold ts, [[]], \|acc, x| UnionTexts acc, (TyParamsIn x)
+    OutFn ts, r: Fold ts, (TyParamsIn r), \|acc, x| UnionTexts acc, (TyParamsIn x)
+    OutJobFn a, r: UnionTexts (TyParamsIn a), (TyParamsIn r)
+    OutMap k, v: UnionTexts (TyParamsIn k), (TyParamsIn v)
+    OutOpt x: TyParamsIn x
+    OutRes x: TyParamsIn x
+    OutArray x: TyParamsIn x
+    OutJob x: TyParamsIn x
+    OutEvent x: TyParamsIn x
+    OutDyn x: TyParamsIn x
+    OutRc x: TyParamsIn x
+    OutRef x: TyParamsIn x
+    OutRefMut x: TyParamsIn x
+    OutHold x: TyParamsIn x
+    OutCell x: TyParamsIn x
+    OutLive x: TyParamsIn x
+    otherwise: [[]]
+
+# A definition's Prism signature, for the doc comment.
+SignatureText: fn Lx, Text -> Text
+fn SignatureText lx, qk = match lx.g.vals[qk]:
+    ? v: match lx.g.srcs[v.file]:
+        ? src: Trim (SpanText src, v.span)
+        nil: BareName qk
+    nil: BareName qk
+
+# A definition's whole Prism source, its signature with it.
+DefinitionText: fn Lx, Text -> Text
+fn DefinitionText lx, qk:
+    let spans = Fold lx.g.defs, [[]], \|acc, d| if d.qk == qk: Push acc, ((d.file, d.span)) else: acc
+    let sig = match lx.g.vals[qk]:
+        ? v: if v.span.start < (Or (Each spans, \|((ignore, r))| r.start)[0], 0): [[((v.file, v.span))]] else: [[]]
+        nil: [[]]
+    Join (Each (Append sig, spans), \|((f, r))| SrcText lx, f, r), "\n"
+
+SrcText: fn Lx, Nat, Range -> Text
+fn SrcText lx, f, r = match ((r.origin, lx.g.srcs[f])):
+    (((MadeBy m), ignore)): MakingText m
+    ((InSource, (? src))): DropTrailingComments (SpanText src, r)
+    ((InSource, nil)): ""
+
+# A definition's span runs to the next one, so it takes the comments that introduce the
+# next (or a test file's header): the quote stops at its last line of code.
+DropTrailingComments: fn Text -> Text
+fn DropTrailingComments t:
+    let lines = SplitOn t, "\n"
+    let keep = Fold (Range0 (Len lines)), 0, \|k, i| if IsCodeLine (Or lines[i], ""): i + 1 else: k
+    TrimEnd (Join (Take lines, keep), "\n")
+
+IsCodeLine: fn Text -> Bool
+fn IsCodeLine l:
+    let s = Trim l
+    s != "" and (not (HasPrefix s, "#"))
+
+# A top-level `let`: a getter computing its value. One the
+# checker generalized (Type System ch. 5: a `let` generalizes; `let Same = \|x| x`, used
+# at `Bool` and at `Nat`) is a generic getter: each variable its scheme quantifies is a
+# type parameter of the getter with the scheme's bounds, named in the value's own types
+# (`GeneralizedLx`), and a use names the types it reads the `let` at (`LetValue`).
+LetGetter: unbounded fn Lx, Text, LetDecl -> FnDef
+fn LetGetter lx, qk, l:
+    let lxg = GeneralizedLx lx, qk
+    let t = OutTyOf lxg, (Peel (TypeAt lxg, l.value.span))
+    let v = ValueOf lxg, emptyEnv, l.value
+    FnDef(name=(Or lx.rsNames[qk], (Snake (BareName qk))), generics=(LetGenerics lx, qk), params=[[]], ret=t, body=(Own v), doc="let {BareName qk}", public=True, wheres=[[]])
+
+# The variables a generalized top-level `let`'s scheme quantifies (`'N`, the checker's
+# name for the variable `N` it left open), each with the type parameter that stands for
+# it in the getter.
+GeneralizedParameters: fn Lx, Text -> [((Text, Text))]
+fn GeneralizedParameters lx, qk = match lx.g.vals[qk]:
+    ? v: if v.hasSig: [[]] else: Each v.scheme.qs, \|q| ((q, "generalized{Or (?AfterPrefix q, "'"), q}"))
+    nil: [[]]
+
+# The lowering inside a generalized top-level `let`'s value: each variable its scheme
+# quantifies read as its type parameter.
+GeneralizedLx: fn Lx, Text -> Lx
+fn GeneralizedLx lx, qk = update lx:
+    &_.subst <= Fold (GeneralizedParameters lx, qk), &_.subst, \|m, ((q, parameter))| Insert m, q, (TyRigid parameter)
+
+# A generalized top-level `let`'s type parameters with their bounds, as a function's are
+# (`SchemeGenerics`).
+LetGenerics: unbounded fn Lx, Text -> [((Text, [Text]))]
+fn LetGenerics lx, qk = match lx.g.vals[qk]:
+    ? v:
+        let parameters = GeneralizedParameters lx, qk
+        let Named = \|q| Fold parameters, q, \|found, ((from, to))| if from == q: to else: found
+        let renamed = update v.scheme:
+            &_.qs <= Each parameters, \|((ignore, to))| to
+            &_.bounds <= Each &_.bounds, \|((q, cls))| (((Named q), cls))
+            &_.ty <= Instantiated &_.ty, (Each parameters, \|((from, ignore))| from), (Each parameters, \|((ignore, to))| TyQ to)
+        if (Len parameters) == 0: [[]] else: SchemeGenerics lx, renamed
+    nil: [[]]
+
+# ---------------------------------------------------------------------------------------
+# Traits and impls (claude/backend.md: a trait is a Rust trait, `derive` impls; a program's
+# own `impl ^Debug` prints by `p.raw`)
+# ---------------------------------------------------------------------------------------
+
+HasOwnShow: fn Lx, Text -> Bool
+fn HasOwnShow lx, tn = Fold (Or lx.g.impls["Prelude.Debug"], [[]]), False, \|f, im| f or ((not im.derived) and (HeadName im.head) == tn)
+
+HeadName: fn Ty -> Text
+fn HeadName (TyCon n, ignore) = n
+fn HeadName other = ""
+
+# An impl's head as a word in a function's name: a named type's name; a collection's
+# shape with its parts' words, so two impls of one prelude trait at two collections (or at
+# one collection of two types) are two functions.
+HeadWord: unbounded fn Ty -> Text
+fn HeadWord t = match t:
+    TyCon "Prelude.NonEmpty", [[c]]: "non_empty_{HeadWord c}"
+    TyCon n, ignore: Snake (BareName n)
+    TyArray x: "array_of_{HeadWord x}"
+    TyMap k, v: "map_of_{HeadWord k}_to_{HeadWord v}"
+    TyTuple xs: "tuple_of_{Join (Each xs, \|x| HeadWord x), "_and_"}"
+    TyQ q: Snake q
+    TyRigid q: Snake q
+    otherwise: "value"
+
+# A trait's parameter as `Self` in its methods' types.
+SelfIn: unbounded fn Ty, Text -> Ty
+fn SelfIn t, param = Instantiated t, [[param]], [[(TyCon "\u{0}Self", [[]])]]
+
+# Whether a trait method's own type parameter is decided by none of its parameters, being
+# only in its result (`?Read: fn Text -> ?a`) or under an associated type (`Make: fn Item a
+# -> a`):
+# a call is decided by the type it gives, never by an argument (`XCallSelf`).
+IsResultOnly: fn Lx, Text, Text -> Bool
+fn IsResultOnly lx, mq, param = match lx.g.vals[mq]:
+    ? v: match v.scheme.ty:
+        TyFn ignore, ps, ignore, prompts: not (Fold ps, False, \|f, p| f or HasText (DeducibleQs p), param)
+        otherwise: True
+    nil: False
+
+# The type variables a value of a type decides.
+DeducibleQs: fn Ty -> [Text]
+fn DeducibleQs t = match t:
+    TyQ q: [[q]]
+    TyRigid q: [[q]]
+    TyCon ignore, xs: Fold xs, [[]], \|acc, x| UnionTexts acc, (DeducibleQs x)
+    TyFn ignore, ps, r, prompts: Fold ps, (DeducibleQs r), \|acc, x| UnionTexts acc, (DeducibleQs x)
+    TyTuple xs: Fold xs, [[]], \|acc, x| UnionTexts acc, (DeducibleQs x)
+    TyArray x: DeducibleQs x
+    TyMap k, v: UnionTexts (DeducibleQs k), (DeducibleQs v)
+    TySig ignore, x: DeducibleQs x
+    TyAt x, ignore: DeducibleQs x
+    TyElem ignore, x: DeducibleQs x
+    # an associated type's argument is not decided by a value of it (`Item a` is `Nat` at
+    # every `a` whose impl chooses `Nat`)
+    TyAssoc ignore, ignore, ignore, ignore: [[]]
+    otherwise: [[]]
+
+# The names a trait's methods whose parameter is only in their result take in the target.
+ResultOnlyNames: fn Lx, TraitInfo -> [Text]
+fn ResultOnlyNames lx, tr = Each (Filter tr.methods, \|mq| IsResultOnly lx, mq, tr.param), \|mq| Or lx.rsNames[mq], (Snake (BareName mq))
+
+TraitDefOf: unbounded fn Lx, TraitInfo -> TraitDef
+fn TraitDefOf lx0, tr:
+    # a default's body has the trait's parameter as `Self`, as its signature does
+    let lx = update (InModule lx0, tr.file, tr.home):
+        &_.subst <= Insert &_.subst, tr.param, (TyCon "\u{0}Self", [[]])
+    # a widget method is inlined at each call by its impl (`?ImplWidgetClauses`), no
+    # method of the Rust trait
+    let methods = Each (Filter tr.methods, \|mq| not (HasPrefix (BareName mq), "@")), \|mq|
+        let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
+        let sc = update v.scheme:
+            &_.ty <= SelfIn &_.ty, tr.param
+            &_.qs <= Filter &_.qs, \|q| q != tr.param
+            &_.bounds <= Filter &_.bounds, \|((q, ignore))| q != tr.param
+        let defaultQk = Fold tr.defaults, "", \|f, dq| if (BareName dq) == (BareName mq): dq else: f
+        let clauses = if defaultQk == "": [[]] else: DefaultClauses lx.g, defaultQk
+        let fd = FnDefIn lx, (if defaultQk == "": mq else: defaultQk), mq, (if (Len clauses) == 0: [[dummyClause]] else: clauses), sc
+        update fd:
+            &_.public <= (Len clauses) > 0
+    TraitDef(supers=(Fold tr.supers, [[]], \|acc, c| Append acc, (BoundOf lx, c)), wheres=(Each (Filter tr.headBounds, \|((h, ignore))| IsPlainProjection h), \|((h, c))| (((OutTyOf lx, (SelfIn h, tr.param)), (BoundOf lx, c)))), name=(TraitName tr.name), resultOnly=(ResultOnlyNames lx, tr), assocs=(Each (PlainAssocs tr), \|a| Camel a), podAssocs=(Each (Filter (PlainAssocs tr), \|a| AssocHeldInAField lx, tr.name, a), \|a| Camel a), methods=(Append methods, (DispatchSignatures lx0, tr)), defaults=tr.defaults, doc=(TypeDoc lx, (TyInfo(rowParams=[[]], name=tr.name, home=tr.home, params=[[]], kinds=[[]], body=BOpaque, derives=[[]], file=tr.file, span=tr.span))))
+
+# A trait's `where`s on an associated type at every index, `Request d _:
+# ^SerializableValue` (Type System ch. 6): Rust has no trait indexed by a role, so the
+# associated type is plain data where its index is not known (`AssocOutAt`), and each
+# method of the bound's trait asked of such a value is a method of this trait's own
+# (`DispatchName`) that takes the index's variant and the value as plain data; each impl
+# answers it at the type its equation gives that variant (`DispatchMethods`). Each:
+# the associated type's trait and name, the bound's trait, and the number of indices.
+EveryIndexBounds: fn TraitInfo -> [((Text, Text, Text, Nat))]
+fn EveryIndexBounds tr = Fold tr.headBounds, [[]], \|acc, ((h, c))| match h:
+    TyAssoc tr2, n, a, indices: if (IsParamTy a, tr.param) and (Len indices) > 0 and Fold indices, True, \|all, x| all and x == TyEvery: Push acc, ((tr2, n, c, (Len indices))) else: acc
+    otherwise: acc
+
+IsParamTy: fn Ty, Text -> Bool
+fn IsParamTy (TyQ q), p = q == p
+fn IsParamTy (TyRigid q), p = q == p
+fn IsParamTy ignore, p = False
+
+# The dispatch method's name: the associated type's and the method's, `request_encode_f`.
+DispatchName: fn Lx, Text, Text -> Text
+fn DispatchName lx, n, mq = "{Snake n}_{Or lx.rsNames[mq], (Snake (BareName mq))}"
+
+# The methods of a bound's trait a dispatch answers: its plain ones.
+DispatchedMethods: fn Lx, Text -> [Text]
+fn DispatchedMethods lx, c = match lx.g.traits[c]:
+    ? ctr: Filter ctr.methods, \|mq| not (HasPrefix (BareName mq), "@")
+    nil: [[]]
+
+# A dispatch method's parameters and result: the variants, then the method's own with its
+# trait's parameter as plain data.
+DispatchShape: unbounded fn Lx, Text, Text, Nat -> (([((Text, OutTy))], OutTy))
+fn DispatchShape lx, c, mq, k:
+    let ctr = Or lx.g.traits[c], dummyTraitInfo
+    let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
+    let ((ptys, res)) = SignatureTys v.scheme
+    let Erased = \|t| AssocPodOut (OutTyOf lx, (Instantiated (Peel t), [[ctr.param]], [[(TyQ assocErasedName)]]))
+    let variants = Each (Range0 k), \|i| (("variant{i}", (OutRef OutNat)))
+    let params = Each (Range0 (Len ptys)), \|i| (("arg{i}", (OutRef (Erased (Or ptys[i], TyErr)))))
+    (((Append variants, params), (Erased res)))
+
+DispatchSignatures: unbounded fn Lx, TraitInfo -> [FnDef]
+fn DispatchSignatures lx, tr = Fold (EveryIndexBounds tr), [[]], \|acc, ((tr2, n, c, k))| Fold (DispatchedMethods lx, c), acc, \|acc2, mq|
+    let ((params, ret)) = DispatchShape lx, c, mq, k
+    Push acc2, FnDef(name=(DispatchName lx, n, mq), generics=[[]], params=params, ret=ret, body=XUnit, doc="", public=False, wheres=[[]])
+
+# An impl's dispatch methods (`EveryIndexBounds`): the variant chooses the type the impl's
+# equation for the associated type gives it, and the method of the bound's trait is asked
+# at that type, the value recoded to it and its result back to plain data.
+DispatchMethods: unbounded fn Lx, ImplInfo, TraitInfo -> [FnDef]
+fn DispatchMethods lx, im, tr = Fold (EveryIndexBounds tr), [[]], \|acc, ((tr2, n, c, k))| Fold (DispatchedMethods lx, c), acc, \|acc2, mq|
+    let ((params, ret)) = DispatchShape lx, c, mq, k
+    let ctr = Or lx.g.traits[c], dummyTraitInfo
+    let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
+    let ((ptys, res)) = SignatureTys v.scheme
+    let mname = Or lx.rsNames[mq], (Snake (BareName mq))
+    let AtType = \|t|
+        let args = Each (Range0 (Len ptys)), \|i|
+            let pt = Peel (Or ptys[i], TyErr)
+            let concrete = OutTyOf lx, (Instantiated pt, [[ctr.param]], [[t]])
+            if (Instantiated pt, [[ctr.param]], [[TyErr]]) == pt: XVar "arg{i}" else: XRef (XCallAt (HelperRef "recode"), [[concrete]], [[(XVar "arg{i}")]])
+        # (a bound by a trait of the prelude, `where SeatId d _: ^Pod`: its method as the
+        # prelude answers it at that type, `PreludeMethod`, never a path of a Rust trait
+        # the prelude has none of; q12 wrote `<() as crate::prelude::Pod>::children`,
+        # rustc E0404, doc-file-document-hosted-on-disk)
+        let atType = OutTyOf lx, (Instantiated (Peel res), [[ctr.param]], [[t]])
+        let vals = Each (Range0 (Len ptys)), \|i|
+            let pt = Peel (Or ptys[i], TyErr)
+            let concrete = OutTyOf lx, (Instantiated pt, [[ctr.param]], [[t]])
+            if (Instantiated pt, [[ctr.param]], [[TyErr]]) == pt: VlPlace (XVar "arg{i}"), ByRef, concrete else: VlOwned (XCallAt (HelperRef "recode"), [[concrete]], [[(XVar "arg{i}")]]), concrete
+        let call = if HasPrefix c, "Prelude.": Own (PreludeMethod lx, c, (BareName mq), vals, im.span, atType) else: XCallSelf (RefIn lx, ctr.home, (TraitName c)), mname, (OutTyOf lx, t), args
+        if (Instantiated (Peel res), [[ctr.param]], [[TyErr]]) == (Peel res): call else: XCallAt (HelperRef "recode"), [[ret]], [[(XRef call)]]
+    let equations = Filter (ImplEquationsAt lx, tr2, n, im.head), \|((ignore, ignore2))| True
+    let body = match equations:
+        [[(("", t))]]: AtType t
+        otherwise: Fold equations, (XUnreachable), \|rest, ((kq, t))| if kq == "": AtType t else: XIf (XBin OpEq, (XDeref (XVar "variant0")), (VariantNumberOfKey lx, kq)), (AtType t), rest
+    Push acc2, FnDef(name=(DispatchName lx, n, mq), generics=[[]], params=params, ret=ret, body=(if k > 1: Refusal "an associated type with several indices bounded at every index: its dispatch is not written yet" else: body), doc="", public=True, wheres=[[]])
+
+# The equations an impl of `tr2` at a head gives the associated type `n`: each role
+# constructor's (its key) with its type, or one for every role ("").
+ImplEquationsAt: unbounded fn Lx, Text, Text, Ty -> [((Text, Ty))]
+fn ImplEquationsAt lx, tr2, n, head = match head:
+    TyCon hc, hargs: Fold (Or lx.g.impls[tr2], [[]]), [[]], \|acc, im| if (Len acc) > 0: acc else: match im.head:
+        TyCon c, cargs if c == hc and (Len cargs) == (Len hargs):
+            let params = Each cargs, \|h| match h:
+                TyQ q: q
+                otherwise: ""
+            Fold im.indexed, [[]], \|a2, e| if e.name != n: a2 else: match e.indices[0]:
+                ? (IndexRole k): Push a2, ((k, (Instantiated e.value, params, hargs)))
+                ? (IndexVar ignore): Push a2, (("", (Instantiated e.value, params, hargs)))
+                otherwise: a2
+        otherwise: acc
+    otherwise: [[]]
+
+VariantNumberOfKey: fn Lx, Text -> Ex
+fn VariantNumberOfKey lx, k = match lx.g.ctors[k]:
+    ? ci: Number OutNat, "{ci.index}", False
+    nil: InternalBug "the variant `{k}`, which the checker did not declare"
+
+# A projection with no indices, which Rust bounds on a trait (`Self::State: ...`); one
+# with indices is normalized at each use and asks its impls (`ImplHasHeadBound`).
+IsPlainProjection: fn Ty -> Bool
+fn IsPlainProjection (TyAssoc ignore, ignore2, ignore3, [[]]) = True
+fn IsPlainProjection ignore = False
+
+DefaultClauses: fn G, Text -> [FnClause]
+fn DefaultClauses g, qk = Fold g.defs, [[]], \|acc, d| if d.qk == qk: DefaultOf d, acc else: acc
+
+DefaultOf: fn Def, [FnClause] -> [FnClause]
+fn DefaultOf d, other = match d.body:
+    DbDefault cs, ignore: cs
+    otherwise: other
+
+# A program's trait as an existential keeps it (`PackedDef`). A method can be asked of a
+# packed value when it has no type parameter of its own, takes the trait's parameter as
+# at least one whole parameter (the dictionary is found in a packed argument), and names
+# it nowhere else but as its whole result. Any other method is no entry of the
+# dictionary (`unasked`): the checker refuses a call of it on a packed value
+# (`existential-method`, ruling EX), and the packing and the trait's other methods stand.
+# A method that names an associated type names the trait's type inside it (`Unit a`), so
+# it is unasked, and the impl for the packed value chooses the unit type for every
+# associated type: no value of one is made through a packed value. `nil` for a trait of
+# the prelude, which is packed by name.
+?PackedDefOf: unbounded fn Lx, TraitInfo -> ?PackedDef
+fn ?PackedDefOf lx0, tr:
+    let lx = InModule lx0, tr.file, tr.home
+    let hiddenTy = TyCon "\u{0}Self", [[]]
+    let start = PackedDef(name=(TraitName tr.name), tr=(PathIn lx, tr.home, (TraitName tr.name)), methods=[[]], unasked=[[]], assocs=(Each (PlainAssocs tr), \|a| Camel a))
+    let packed = Fold (Filter tr.methods, \|mq| not (HasPrefix (BareName mq), "@")), start, \|acc, mq|
+        let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
+        let ((ps, r)) = match v.scheme.ty:
+            TyFn ignore, ps, r, prompts: ((ps, r))
+            other: (([[]], other))
+        let marked = Each ps, \|p| Instantiated p, [[tr.param]], [[hiddenTy]]
+        let hidden = Each marked, \|m| m == hiddenTy
+        let markedResult = Instantiated r, [[tr.param]], [[hiddenTy]]
+        let whole = Fold (Range0 (Len ps)), True, \|ok, i| ok and ((Or hidden[i], False) or (Or marked[i], TyErr) == (Or ps[i], TyErr))
+        let ownQs = Filter v.scheme.qs, \|q| q != tr.param
+        let sc = update v.scheme:
+            &_.ty <= Instantiated &_.ty, [[tr.param]], [[(TyAny [[tr.name]])]]
+            &_.qs <= ownQs
+            &_.bounds <= Filter &_.bounds, \|((q, ignore))| q != tr.param
+        let method = FnDefOf lx, mq, [[dummyClause]], sc
+        if (Len ownQs) > 0 or not whole or not (Fold hidden, False, \|f, h| f or h) or not (markedResult == hiddenTy or markedResult == r): update acc:
+            &_.unasked <= Push &_.unasked, method
+        else: update acc:
+            &_.methods <= Push &_.methods, PackedMethod(method=method, hidden=hidden, hiddenResult=(markedResult == hiddenTy))
+    # a trait whose `where` asks more of its type (`where d: ^StateDocument`) is no
+    # existential's here: its packing would need the other traits' impls too (R gap)
+    if (HasPrefix tr.name, "Prelude.") or (Len tr.supers) > 0 or (Len tr.headBounds) > 0: nil else: ? packed
+
+# The function that makes a trait's dictionary at a type, given a value of it
+# (`PackedDef`; the packing's `with_dictionary` takes it).
+PackedDictionaryOf: fn Lx, TraitInfo -> Ref
+fn PackedDictionaryOf lx, tr = RefIn lx, tr.home, "{Lower (TraitName tr.name)}_packed_of"
+
+# Whether some record's or tag's field holds the associated type `n` of trait `tr` at a
+# type's variable (`last: Reading g`), where the field erases it to plain data.
+AssocHeldInAField: unbounded fn Lx, Text, Text -> Bool
+fn AssocHeldInAField lx, tr, n:
+    let inCtors = Fold (Values lx.g.ctors), False, \|seen, c| seen or Fold c.args, False, \|s2, t| s2 or OpenAssocNamed t, tr, n
+    inCtors or Fold (Values lx.g.tags), False, \|seen, tg| seen or Fold tg.fields, False, \|s2, ((ignore, t))| s2 or OpenAssocNamed t, tr, n
+
+OpenAssocNamed: unbounded fn Ty, Text, Text -> Bool
+fn OpenAssocNamed t, tr, n = match t:
+    TyAssoc t2, n2, a, indices: (t2 == tr and n2 == n and HasOpenAssoc t) or (OpenAssocNamed a, tr, n)
+    TyCon ignore, args: Fold args, False, \|seen, x| seen or OpenAssocNamed x, tr, n
+    TyTuple ts: Fold ts, False, \|seen, x| seen or OpenAssocNamed x, tr, n
+    TyArray e: OpenAssocNamed e, tr, n
+    TyMap k, v: (OpenAssocNamed k, tr, n) or OpenAssocNamed v, tr, n
+    TySig ignore, i: OpenAssocNamed i, tr, n
+    otherwise: False
+
+# An impl's methods, each with its trait's scheme at the impl's head.
+ImplDefOf: unbounded fn Lx, ImplInfo -> ImplDef
+fn ImplDefOf lx, im:
+    let tr = Or lx.g.traits[im.cls], dummyTraitInfo
+    let head = OutTyOf lx, im.head
+    let defs = Filter lx.g.defs, \|d| (IsMethodOf d, im) and not (HasPrefix d.name, "@")
+    let methods0 = Each defs, \|d|
+        let mq = Fold tr.methods, "", \|found, q| if (BareName q) == d.name: q else: found
+        let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
+        # the method's own type parameters are apart from the head's of one name, as the
+        # checker read its body (`SchemeApart`)
+        let own = update v.scheme:
+            &_.qs <= Filter &_.qs, \|q| q != tr.param
+            &_.bounds <= Filter &_.bounds, \|((q, ignore))| q != tr.param
+        let sc = update (SchemeApart own, im.qs):
+            &_.ty <= Instantiated &_.ty, [[tr.param]], [[im.head]]
+        let fd = FnDefIn lx, (InstanceKey d), mq, (MethodClauses d), sc
+        if (HasPrefix im.cls, "Prelude."): Renamed fd, "{Snake d.name}_{HeadWord im.head}" else: fd
+    # a method the impl leaves to a default of a trait below (ruling SD): that default's
+    # body, its trait's parameter read as the impl's head
+    let fromBelow = Each (Filter im.aboveChosen, \|((m, ignore, ignore2))| not (HasPrefix m, "@") and not (Fold defs, False, \|seen, d| seen or d.name == m)), \|((m, dq, below))|
+        let mq = Fold tr.methods, "", \|found, q| if (BareName q) == m: q else: found
+        let v = Or lx.g.vals[mq], (Builtin mq, (Mono TyErr))
+        let own = update v.scheme:
+            &_.qs <= Filter &_.qs, \|q| q != tr.param
+            &_.bounds <= Filter &_.bounds, \|((q, ignore))| q != tr.param
+        let sc = update (SchemeApart own, im.qs):
+            &_.ty <= Instantiated &_.ty, [[tr.param]], [[im.head]]
+        let belowParam = (Or lx.g.traits[below], dummyTraitInfo).param
+        let lxBelow = update lx:
+            &_.subst <= Insert &_.subst, belowParam, im.head
+        FnDefIn lxBelow, dq, mq, (DefaultClauses lx.g, dq), sc
+    let methods = Append (Append methods0, fromBelow), (DispatchMethods lx, im, tr)
+    # an impl's `where` clauses bound its type parameters, as a function's do
+    # (only those the Rust head names: a parameter no field of the type holds, `o` of
+    # `Tallied o`, is the checker's alone, `ParamUsed`, and Rust has no unconstrained one)
+    let generics = Each (Filter im.qs, \|q| HasText (TyParamsIn head), (Camel q)), \|q| ((Camel q, (ImplBounds lx, im, q)))
+    ImplDef(cls=im.cls, tr=(PathIn lx, tr.home, (TraitName im.cls)), head=head, generics=generics, assocs=(Each im.assocs, \|((an, at))| (((Camel an), (OutTyOf lx, at)))), resultOnly=(ResultOnlyNames lx, tr), methods=methods, doc="")
+
+ImplBounds: unbounded fn Lx, ImplInfo, Text -> [Text]
+fn ImplBounds lx, im, q = Fold im.bounds, [["std::Clone"]], \|acc, ((v, cls))| if v == q: UnionTexts acc, (BoundOf lx, cls) else: acc
+
+Renamed: fn FnDef, Text -> FnDef
+fn Renamed fd, n = update fd:
+    &_.name <= n
+
+IsMethodOf: fn Def, ImplInfo -> Bool
+fn IsMethodOf d, im = match d.body:
+    DbMethod ignore, cls, other: cls == im.cls and other.span == im.span and other.file == im.file
+    otherwise: False
+
+MethodClauses: fn Def -> [FnClause]
+fn MethodClauses d = match d.body:
+    DbMethod cs, ignore, ignore: cs
+    otherwise: [[]]
+
+
+# A trait's associated types with no indices, which its Rust trait declares; one with
+# indices (Type System ch. 6) is normalized at each use and declares nothing there.
+PlainAssocs: fn TraitInfo -> [Text]
+fn PlainAssocs tr = Filter tr.assocs, \|a| not (HasKey tr.assocParams, a)
+
+# A definition's kinded type variables (`forall (r: Access)`, ruling PK), each with its
+# kind's choice, in the order its `forall` names them.
+KindsOf: unbounded fn Lx, Text -> [((Text, Text))]
+fn KindsOf lx, qk = match lx.g.vals[qk]:
+    ? v: KindsOfVal lx, v
+    nil: [[]]
+
+# A value's kinded type variables: those its `forall` gives a choice as kind, and those of
+# an associated kind (`(r: Role d)`) that a `Fixed r` of its type names, their choice "".
+KindsOfVal: unbounded fn Lx, ValInfo -> [((Text, Text))]
+fn KindsOfVal lx, v = if v.sort == "method": [[]] else:
+    let fixed = Filter (FixedVarsIn v.scheme.ty), \|q| HasText v.scoped, q
+    let withFixed = Fold fixed, v.scopedKinds, \|acc, q| if Fold acc, False, \|seen, ((k, ignore))| seen or k == q: acc else: Push acc, ((q, ""))
+    # (and a variable its type gives where a type's parameter declares a kind, `r` of
+    # `Packed: fn Edit r, Edit r -> Paired`, `Edit (r: Access)`: kinded by that kind, with
+    # no `forall` naming it)
+    Fold (KindedVarsIn lx.g, v.scheme.ty), withFixed, \|acc, ((q, kind))| if Fold acc, False, \|seen, ((k, ignore))| seen or k == q: acc else: Push acc, ((q, kind))
+
+# The variables a type gives at a type's parameter that declares a kind naming a choice,
+# each with that choice (`Edit r`, `Edit (r: Access)`: `r`, `Access`).
+KindedVarsIn: unbounded fn G, Ty -> [((Text, Text))]
+fn KindedVarsIn g, t = match t:
+    TyCon c, args:
+        let own = match g.types[c]:
+            ? ti: Fold (Range0 (Len args)), [[]], \|acc, i| match (((Or args[i], TyErr), (?KindOf ti, (Or ti.params[i], "")))):
+                ((TyQ q, ? k)): match k.kind:
+                    TName n, [[]]: match ResolveType g, ti.home, n.path:
+                        ((? found, ignore)): Push acc, ((q, found))
+                        otherwise: acc
+                    otherwise: acc
+                otherwise: acc
+            nil: [[]]
+        Fold args, own, \|acc, a| Append acc, (KindedVarsIn g, a)
+    TyFn ignore, ps, r, prompts: Fold ps, (KindedVarsIn g, r), \|acc, p| Append acc, (KindedVarsIn g, p)
+    TyTuple ts: Fold ts, [[]], \|acc, x| Append acc, (KindedVarsIn g, x)
+    TyArray e: KindedVarsIn g, e
+    TyMap k, x: Append (KindedVarsIn g, k), (KindedVarsIn g, x)
+    TySig ignore, i: KindedVarsIn g, i
+    otherwise: [[]]
+
+# The variables a type holds as `Fixed r`.
+FixedVarsIn: unbounded fn Ty -> [Text]
+fn FixedVarsIn t = match t:
+    TyCon "Prelude.Fixed", [[(TyQ q)]]: [[q]]
+    TyCon "Prelude.Fixed", [[(TyRigid q)]]: [[q]]
+    TyCon ignore, xs: Fold xs, [[]], \|acc, x| UnionTexts acc, (FixedVarsIn x)
+    TyFn ignore, ps, r, prompts: Fold ps, (FixedVarsIn r), \|acc, x| UnionTexts acc, (FixedVarsIn x)
+    TyTuple xs: Fold xs, [[]], \|acc, x| UnionTexts acc, (FixedVarsIn x)
+    TySig ignore, i: FixedVarsIn i
+    TyExists ignore, b, ignore2, kinds: FixedVarsIn b
+    otherwise: [[]]
+
+# The hidden parameter that holds a kinded type variable's variant.
+KindParamName: fn Text -> Text
+fn KindParamName r = "{Snake r}_variant"

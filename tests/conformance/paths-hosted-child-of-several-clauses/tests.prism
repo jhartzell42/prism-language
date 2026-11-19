@@ -1,0 +1,8 @@
+emit Ui.*
+use App.*
+
+test a_child_of_several_clauses, @clauses:
+    build
+
+test an_applied_blueprint_child, @applied:
+    build

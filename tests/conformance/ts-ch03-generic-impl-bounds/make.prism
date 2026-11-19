@@ -1,0 +1,7 @@
+# `Make`, a child module of ts-ch03-generic-impl-bounds.
+emit r
+use Boxes.*
+use Items.*
+
+Boxed: fn Nat -> Boxes.Box Items.Item
+fn Boxed n = Boxes.Box(item=Items.Item(n=n))

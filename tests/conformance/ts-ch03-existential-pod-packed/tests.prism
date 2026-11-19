@@ -1,0 +1,6 @@
+# The tests of ts-ch03-existential-pod-packed.
+emit Ui.*
+use App.*
+
+test packed_data_is_counted, @page:
+    build

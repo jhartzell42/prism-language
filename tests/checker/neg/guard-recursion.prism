@@ -1,0 +1,13 @@
+# `may-not-end`: a call in a `match` guard is a call. `Spin` calls itself only in its
+# guard, on the number it was given, so it never ends; `Even` calls itself in its guard on
+# the `? m` of `n -? 1`, a smaller number, and checks clean.
+Spin: fn Nat -> Bool
+fn Spin n = match n:
+    k if Spin k: True
+    otherwise: False
+
+Even: fn Nat -> Bool
+fn Even n = match n -? 1:
+    ? m if Even m: False
+    ? m: True
+    nil: True

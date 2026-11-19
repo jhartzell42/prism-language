@@ -1,0 +1,4 @@
+tests/checker/neg/function-at-ever-larger-types.prism:6: error[grows-without-end]: `Depth` calls itself at `[a]` for `a`: a type that grows without end
+        ? less: Depth [[xs]], less
+                ^^^^^
+1 error

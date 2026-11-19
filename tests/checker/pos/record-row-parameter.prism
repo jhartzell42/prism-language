@@ -1,0 +1,14 @@
+# A record's parameter that stands only after `|` in an `emit` row is a row (ruling RR), and
+# a row given for it stands there: `Seated Ui.*` built from guests that emit `Ui.*`, and its
+# field read back at that row. Found by the step 3 build on the tally (`TallySeats o rest`,
+# built by `@Table` as a `TallySeats o Ui.*`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+type Seated rest = record:
+    $guest: (Text ==> $@(@unit emit Ui.* | rest))
+
+Seat: fn $(Text ==> $@(@unit emit Ui.* | Fs.*)) -> Seated Fs.*
+fn Seat $guests = Seated($guest=$guests)
+
+$Guests: fn Seated Fs.* -> $(Text ==> $@(@unit emit Ui.* | Fs.*))
+fn $Guests seated = seated.$guest

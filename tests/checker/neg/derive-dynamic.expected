@@ -1,0 +1,5 @@
+tests/checker/neg/derive-dynamic.prism:5: error[derive-dynamic]: `derive ^Eq` on `Held`, whose `level` holds a dynamic or an event, which does not compare or print
+    type Held = record:
+    ^^^^^^^^^^^^^^^^^^^
+  fix: drop the derive
+1 error

@@ -1,0 +1,7 @@
+# Derived by hand: `Card 3` shows as written, `Card 4` ranks 4 and `Joker` 0, and a choice
+# orders by its alternatives first, `Card` before `Joker`.
+test case_named_as_choice
+
+tick 0
+  added:
+    0: Ui.Label(text="Card 3 4 0 True")

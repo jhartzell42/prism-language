@@ -1,0 +1,285 @@
+# `Syntax.Decls`, a child module of `Syntax`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Syntax.*
+
+# ---------------------------------------------------------------------------------------
+# Declarations
+# ---------------------------------------------------------------------------------------
+
+type Decl = record:
+    kind: DeclKind
+    span: Range
+derive ^Eq, ^Debug
+
+type DeclKind = choice:
+    DSignature Signature
+    DFn FnClause
+    DLet LetDecl
+    DWidget WidgetDecl
+    DType TypeDecl
+    DTag TagDecl
+    DFamily FamilyDecl
+    DDerive [TraitRef]
+    # `derive ^Named a via ^Titled a:` and its methods, an impl written once over any type
+    # with the second trait's impl (Jimmy's ruling AF; Part VII ch. 7, step C8)
+    DVia ViaDecl
+    # `derive ^Named via ^Titled for Book`: that impl, for one type
+    DDeriveVia DeriveViaDecl
+    DTrait TraitDecl
+    DImpl ImplDecl
+    DCheck CheckDecl
+    DTest TestDecl
+    DStmt Stmt
+derive ^Eq, ^Debug
+
+# The name a signature or a definition is for: a name, or in a trait an operator.
+type DefName = choice:
+    DefSName SName
+    DefOp Text, Range
+derive ^Eq, ^Debug
+
+type Signature = record:
+    name: DefName
+    ty: Type
+    bounds: [Bound]
+    # The runtime function a declaration with no body names (ruling RT):
+    # `= runtime "documents::seat_path_of"`, a path under `prism_rtl`.
+    ?runtime: Text
+    span: Range
+derive ^Eq, ^Debug
+
+type Bound = record:
+    var: Ident
+    # the bound's head where it is a type, not a variable (`State d: ^SerializableValue`,
+    # Part III ch. 7); `var` is then its first name
+    ?head: Type
+    traits: [TraitRef]
+    # an equality of types, `Request g = Move g` (Claude's call DE): the head is the left
+    # side, this the right, and `traits` is empty
+    ?equals: Type
+    span: Range
+derive ^Eq, ^Debug
+
+type FnClause = record:
+    name: DefName
+    params: [Pattern]
+    body: FnBody
+    span: Range
+derive ^Eq, ^Debug
+
+type FnBody = choice:
+    BodyExpr Expr
+    BodyBlock Block
+derive ^Eq, ^Debug
+
+type LetDecl = record:
+    pattern: Pattern
+    ?ty: Type
+    value: Expr
+    span: Range
+derive ^Eq, ^Debug
+
+type WidgetDecl = record:
+    name: SName
+    body: Block
+    span: Range
+derive ^Eq, ^Debug
+
+type TypeDecl = record:
+    name: QualName
+    params: [Ident]
+    # the parameters whose kinds are stated, `(u: Unit)`, with their kinds
+    kinds: [((Text, Type))]
+    ?body: TypeBody
+    span: Range
+derive ^Eq, ^Debug
+
+type TypeBody = choice:
+    TbRecord [Field]
+    TbChoice [Case]
+    TbRow
+    TbNewtype Case
+    TbUnit Ident
+    TbAlias Type
+derive ^Eq, ^Debug
+
+# A field's sigils stand on its name, as a binder's do (`$label: Text` holds a dynamic).
+type Field = record:
+    sigils: Text
+    name: Ident
+    ty: Type
+    span: Range
+derive ^Eq, ^Debug
+
+type Case = record:
+    name: SName
+    args: [Type]
+    ?indexed: Type
+    span: Range
+derive ^Eq, ^Debug
+
+# `family Seat d (r: Role) where d: ^Document` (Part III ch. 6, "Families indexed by
+# document and role"; Jimmy's ruling AF): a tag family's parameters, which every tag of
+# the family may use, and their bounds.
+type FamilyDecl = record:
+    name: QualName
+    params: [Ident]
+    kinds: [((Text, Type))]
+    bounds: [Bound]
+    span: Range
+derive ^Eq, ^Debug
+
+type TagDecl = record:
+    name: QualName
+    ofType: Type
+    bounds: [Bound]
+    fields: [Field]
+    span: Range
+derive ^Eq, ^Debug
+
+type TraitDecl = record:
+    name: TraitRef
+    params: [Ident]
+    bounds: [Bound]
+    items: [TraitItem]
+    span: Range
+derive ^Eq, ^Debug
+
+type TraitItem = choice:
+    TiSignature Signature
+    TiFn FnClause
+    # an associated type: its name, parameters, the stated kinds of some, and its value
+    # (the last, whether it is written through its trait, `type ^Document.Reason Player =
+    # ..` in an impl: ruling AQ)
+    TiAssocType Ident, [Ident], [((Text, Type))], ?Type, Range, Bool
+    # `row Lower` in a trait, `row Lower = Ui.*` in an impl (Type System ch. 3)
+    TiAssocRow SName, ?Type, Range
+derive ^Eq, ^Debug
+
+type ImplDecl = record:
+    traitRef: TraitRef
+    ty: Type
+    bounds: [Bound]
+    items: [TraitItem]
+    span: Range
+    # the trait an impl written by `derive ... via` came through
+    ?through: TraitRef
+derive ^Eq, ^Debug
+
+type ViaDecl = record:
+    traitRef: TraitRef
+    param: Ident
+    through: TraitRef
+    # what the derive asks of each type that opts in, `where Request g = Move g` (DE)
+    bounds: [Bound]
+    items: [TraitItem]
+    span: Range
+derive ^Eq, ^Debug
+
+type DeriveViaDecl = record:
+    traitRef: TraitRef
+    through: TraitRef
+    ty: Type
+    span: Range
+derive ^Eq, ^Debug
+
+# ---------------------------------------------------------------------------------------
+# Tests (Conformance ch. 1 and Appendix A)
+# ---------------------------------------------------------------------------------------
+
+type CheckDecl = record:
+    name: Ident
+    lines: [CheckLine]
+    span: Range
+derive ^Eq, ^Debug
+
+type CheckLine = record:
+    expr: Expr
+    ?pattern: Pattern
+    span: Range
+derive ^Eq, ^Debug
+
+type TestDecl = record:
+    name: Ident
+    blueprint: Expr
+    ?seed: Nat
+    steps: [TestStep]
+    span: Range
+derive ^Eq, ^Debug
+
+type TestStep = record:
+    withs: [Entry]
+    action: StepAction
+    checks: [TestCheck]
+    span: Range
+derive ^Eq, ^Debug
+
+type Entry = record:
+    element: Expr
+    value: Expr
+    span: Range
+derive ^Eq, ^Debug
+
+type StepAction = choice:
+    SaBuild
+    SaTick
+    SaCompute Bool
+    SaPush Entry
+    SaDeliver [Delivery]
+    SaWithOnly
+derive ^Eq, ^Debug
+
+type Delivery = record:
+    kind: DeliveryKind
+    target: Target
+    span: Range
+derive ^Eq, ^Debug
+
+type DeliveryKind = choice:
+    DkSend Expr
+    DkClick
+    DkAnswer
+derive ^Eq, ^Debug
+
+type Target = choice:
+    TgPattern Pattern
+    TgPath TestPath
+    TgElement TestPath
+derive ^Eq, ^Debug
+
+type TestPath = record:
+    segments: [PathSeg]
+    span: Range
+derive ^Eq, ^Debug
+
+type PathSeg = choice:
+    PsNum Nat
+    PsGen Nat
+    PsKey Expr
+    # a key that is itself a path, a host's guest place (`1.[0.0]/0`, ruling PL)
+    PsKeyPath [PathSeg]
+    # `/`: a widget application's own list starts (ruling PL)
+    PsCall
+derive ^Eq, ^Debug
+
+type TestCheck = record:
+    kind: TestCheckKind
+    span: Range
+derive ^Eq, ^Debug
+
+type TestCheckKind = choice:
+    CkExpect Pattern
+    CkExpectNone Pattern
+    CkExpectCount Pattern, Nat
+    CkExpectTop Pattern
+    CkExpectTopNone Pattern
+    CkRequested Pattern, Pattern
+    CkUnrequested Pattern
+    CkReturns Pattern
+    CkFired Pattern
+    CkQuiet
+    CkSettles
+    CkAborted
+    CkSnapshot Text
+derive ^Eq, ^Debug

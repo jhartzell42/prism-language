@@ -1,0 +1,6 @@
+# Derived by hand: `n` is 3, `label` "two", `Add m` is 5 + 2.
+test tuple_let_in_widget
+
+tick 0
+  added:
+    0: Ui.Label(text="3 two 7")

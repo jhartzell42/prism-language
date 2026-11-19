@@ -1,0 +1,24 @@
+# Part VII ch. 7, step C8: a `via` trait that does not give the method. `^Named` asks
+# `Name` and `Greeting`; the via definitions from `^Titled` give `Name` alone, so `derive
+# ^Named via ^Titled for Book` leaves `Greeting` without a definition, and the checker
+# refuses the derive line. The form of the via definitions is Claude's first ruling, as in
+# conformance/doc-c8-derive-via.
+# The expected diagnostic is hand-derived: its text is Claude's, the error a derive gets.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+trait ^Named a:
+    Name: fn a -> Text
+    Greeting: fn a -> Text
+
+trait ^Titled a:
+    Title: fn a -> Text
+
+derive ^Named a via ^Titled a:
+    fn Name x = Title x
+
+type Book = record:
+    title: Text
+
+impl ^Titled Book:
+    fn Title book = book.title
+
+derive ^Named via ^Titled for Book

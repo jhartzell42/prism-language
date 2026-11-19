@@ -1,0 +1,6 @@
+# The tests of ts-ch05-bounded-function-parameter.
+emit Ui.*
+use App.*
+
+test it_runs, @page:
+    build

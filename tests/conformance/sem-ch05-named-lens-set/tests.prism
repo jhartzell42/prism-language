@@ -1,0 +1,8 @@
+# The tests of sem-ch05-named-lens-set.
+emit r
+use App.*
+
+check reset_sets_the_part:
+    Reset boot => Vm(pc=4, regs=Regs(acc=0, x=5), steps=2)
+    (Reset boot).regs.acc => 0
+    boot => Vm(pc=4, regs=Regs(acc=7, x=5), steps=2)

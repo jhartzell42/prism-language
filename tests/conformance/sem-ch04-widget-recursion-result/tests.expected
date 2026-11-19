@@ -1,0 +1,17 @@
+# Derived by hand from Semantics ch. 4 (R7: the new row at the end of the click's tick) and ch. 7 (round 3 ST, a gathered `for` publishes a tick after its rows moved, and TK, owed ticks): the click at 1 gives row 0's entry a child, whose row is built in that tick and whose count `b`'s gathered counts take; they are published at 2, where `b`'s total moves the root's gathered counts, published at 3 with the root's total.
+test the_count_grows_a_level
+
+tick 0
+  added:
+    0: Ui.Button(label="grow")
+    2: Ui.Label(text="2 nodes")
+
+tick 1
+  in:
+    0: click
+
+compute until idle: 2 ticks, 2 to 3
+
+tick 3
+  changed:
+    2: Ui.Label(text="3 nodes")

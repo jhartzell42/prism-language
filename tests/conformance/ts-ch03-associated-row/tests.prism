@@ -1,0 +1,6 @@
+# The tests of ts-ch03-associated-row.
+emit Ui.*
+use App.*
+
+test lower_row_is_the_impls, @page:
+    build

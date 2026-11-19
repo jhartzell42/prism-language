@@ -1,0 +1,9 @@
+# The tests of sem-ch08-root-widget-of-clauses.
+emit Ui.*
+use App.*
+
+test the_second_clause_is_built, @Note (? "Mine"):
+    build
+
+test the_first_clause_is_built, @Note nil:
+    build

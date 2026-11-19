@@ -1,0 +1,17 @@
+# A plain function over a `$` parameter whose result holds that dynamic (gap LF): a
+# sigiled parameter is not lifted over (Type System ch. 4, Application), so `Wrap` takes
+# the dynamic whole and gives it back in its list, a `Dynamic` in and out.
+# Written for tests/driver/run.sh by Claude on the claude-bugs branch. Subject to change.
+emit Fs.*
+use Fs.*
+
+Wrap: fn $Nat -> [$Nat]
+fn Wrap $a = [[$a]]
+
+@main: @unit
+@main:
+    !started <- @started                                              # 0
+    $n <- 0 then 1 on !started                                        # 1
+    ignore <- Fs.File(path="/etc/motd", !requests=(Read on !started))  # 2
+    let k = Len (Wrap $n)
+    @ unit

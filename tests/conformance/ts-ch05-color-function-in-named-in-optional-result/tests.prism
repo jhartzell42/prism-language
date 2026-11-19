@@ -1,0 +1,6 @@
+# The tests of ts-ch05-color-function-in-named-in-optional-result.
+emit Ui.*
+use App.*
+
+test it_builds, @page:
+    build

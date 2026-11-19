@@ -1,0 +1,22 @@
+# `may-not-end`: a closure passed to a program's function that only calls it (pick CT) is
+# called where it is passed, with what the function gives it: `AddUp` calls `F` on each
+# element of `ts`. `Total` passes itself and a lambda calling it, each given a part of a
+# `Node`'s children, and checks clean; `Spin` passes itself with `[[t]]`, whose element is
+# `t` again, so it never ends.
+type Tree = choice:
+    Leaf Nat
+    Node [Tree]
+
+AddUp: fn [Tree], (fn Tree -> Nat) -> Nat
+fn AddUp ts, F = Fold ts, 0, \|acc, t| acc + (F t)
+
+Total: fn Tree -> Nat
+fn Total (Leaf n) = n
+fn Total (Node ts) = AddUp ts, Total
+
+Twice: fn Tree -> Nat
+fn Twice (Leaf n) = n
+fn Twice (Node ts) = AddUp ts, \|t| 2 * (Twice t)
+
+Spin: fn Tree -> Nat
+fn Spin t = AddUp [[t]], Spin

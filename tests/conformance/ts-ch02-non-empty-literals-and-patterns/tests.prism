@@ -1,0 +1,8 @@
+# The tests of ts-ch02-non-empty-literals-and-patterns.
+emit Ui.*
+use App.*
+use Ui.*
+
+test literals_and_patterns, @main:
+    build
+    click at 1

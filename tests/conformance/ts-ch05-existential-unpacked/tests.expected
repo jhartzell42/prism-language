@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 5: each hidden value equals itself under its own type's `^Eq`, so both are true.
+test existentials_unpacked
+
+tick 0
+  added:
+    0: Ui.Label(text="T T")

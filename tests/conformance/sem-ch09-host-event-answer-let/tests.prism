@@ -1,0 +1,10 @@
+# The tests of sem-ch09-host-event-answer-let.
+emit Ui.* | Pad.*
+use App.*
+
+test a_named_event_answer, @host:
+    build
+        => expect Ui.Label(text="sum 0")
+    click at 0
+    compute
+        => expect Ui.Label(text="sum 3")

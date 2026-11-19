@@ -1,0 +1,14 @@
+# An impl chooses each associated type once (Type System ch. 3, "Associated types": "an
+# associated type, which each impl chooses"). Written by Claude on the claude-bugs branch;
+# subject to change.
+trait ^Sized a:
+    type Width
+    Wide: fn a -> Width a
+
+type Book = record:
+    pages: Nat
+
+impl ^Sized Book:
+    type Width = Nat
+    type Width = Text
+    fn Wide b = b.pages

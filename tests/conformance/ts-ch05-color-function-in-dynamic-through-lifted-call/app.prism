@@ -1,0 +1,26 @@
+# A function of its callee's own color inside the dynamic a call returns, the call lifted
+# over a dynamic argument and flattened (Type System ch. 4: a function that takes a
+# closure takes the closure's color, and a plain function lifts over a dynamic argument;
+# Semantics ch. 7: the unbounded color). The lifted call's type holds one `$` more than
+# its signature's result, so the two do not differ in color alone. Without the lift
+# (`let $G = $Adder 3`) the program lowers. Reaches `Recolored`'s refusal "a function
+# value of its callee's own color inside the value a call returns ... held by a type that
+# is no array, event, dynamic, ..." on prismc-r27.
+# Written by Claude (t2, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+$Adder: u fn Nat -> $(u fn Nat -> Nat)
+fn $Adder k = $ (\|n| n + k)
+
+@page: @unit
+@page:
+    !inc <- Ui.Button($label=$"inc")                                 # 0
+    $k <- 0 then $k + 1 on !inc
+    $G <- @Flatten ($Adder $k)
+    let $h = Apply $G, 2
+    Ui.Label($text=$"{$h}")                                           # 1
+
+Apply: fn (fn Nat -> Nat), Nat -> Nat
+fn Apply F, n = F n

@@ -1,0 +1,15 @@
+# `<=` sets a location, and on a map `&m[k]` is an entry, which `<:` puts (Jimmy's ruling
+# on map entries, 12 November): the fix is the same statement with `<:`.
+# Written by Claude on the claude-lowering branch; subject to change.
+type Game = record:
+    board: (Int ==> Text)
+    turn: Nat
+
+&Home: fn &Game -> Entry Int Text
+fn &Home &game = &game.board[1]
+
+Clear: fn Game -> Game
+fn Clear game = update game:
+    &_.board[2] <= nil
+    &Home &_ <= ? "K"
+    &_.turn <= 1

@@ -1,0 +1,22 @@
+# `may-not-end`: a field of a local is smaller than the local the relations in scope say
+# it is a part of (pick SC). In `Spin` the body's `let &s` is a new local each turn, so
+# `&s <= &s.tail` sets that one and the loop's `&s` never changes; `Walk` sets the loop's
+# own `&s` to its tail and checks clean.
+type Stream = record:
+    head: Nat
+    tail: Stream
+
+Spin: fn Stream -> Nat
+fn Spin s = update 0:
+    let &s = s
+    while &s.head > 0:
+        &_ += 1
+        let &s = Stream(head=1, tail=s)
+        &s <= &s.tail
+
+Walk: fn Stream -> Nat
+fn Walk s = update 0:
+    let &s = s
+    while &s.head > 0:
+        &_ += 1
+        &s <= &s.tail

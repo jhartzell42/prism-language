@@ -1,0 +1,7 @@
+# The tests of sem-ch08-element-value-dynamic-statement.
+emit Ui.* | Pad.*
+use App.*
+
+test a_placed_dynamic_element, @page:
+    with Pad.Gauge(name="a") = 3, build
+    push Pad.Gauge(name="a") = 4

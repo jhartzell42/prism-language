@@ -1,0 +1,6 @@
+# The tests of sem-ch09-host-above-for-doc-read-between.
+emit Ui.* | Pad.*
+use App.*
+
+test the_builder_between_reads_the_document, @host:
+    build

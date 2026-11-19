@@ -1,0 +1,7 @@
+# The tests of sem-ch07-updated-constant.
+emit Ui.*
+use App.*
+
+test it_builds, @page:
+    build
+        => expect Ui.Label(text="n 0 c 1")

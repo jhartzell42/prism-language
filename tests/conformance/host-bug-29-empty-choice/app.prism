@@ -1,0 +1,8 @@
+# A choice with no case: the prelude's `Never`, the type with no value, for a role that
+# requests nothing.
+Absurd: fn Never -> Nat
+fn Absurd never = match never:
+
+@main: @unit
+@main:
+    @ unit

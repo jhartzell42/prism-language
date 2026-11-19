@@ -1,0 +1,8 @@
+# The tests of doc-state-document-bound-and-default.
+emit Ui.*
+use App.*
+
+test default_in_memory_keeps_the_state, @page:
+    build
+    click at 0
+    click at 0

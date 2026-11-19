@@ -1,0 +1,63 @@
+# A bodiless declaration naming its runtime function (ruling RT) whose type parameters
+# only its result names, `SeatIdAt: forall d (r: Role d). fn Path -> SeatId d r`, called
+# at a document and a role inside a host's supplier and packed into an existential with
+# the role (the library's `@HostRole`: `any ((role, (SeatIdAt<<d, r>> path), element))`).
+# Isolated from tests/documents/c6-chess-by-hand, whose crate called
+# `::prism_rtl::documents::seat_id_at(path)` with no type for its result inside
+# `Packed::of(..)` (rustc E0283: type annotations needed).
+# (A declaration naming its runtime function in a program's own module: q11's checker
+# refuses it, "has a signature line and no definition", where ruling RT, as written, names
+# no module it is kept to. A doubt raised with Jimmy.)
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type SeatId (r: Role d)
+    Described: forall (r: Role d). fn Fixed r, SeatId d r -> Text
+
+type SeatKey d = any (r: Role d): ((Fixed r, SeatId d r))
+
+SeatIdAt: forall d (r: Role d). fn Path -> SeatId d r = runtime "documents::seat_id_at"
+
+Told: forall d. fn SeatKey d -> Text where d: ^Document
+fn Told seatKey = match seatKey:
+    any ((role, id)): Described<<d>> role, id
+
+type CountRole = choice:
+    Raiser
+    Watcher
+derive ^Eq, ^Ord, ^Debug
+
+type Count = record:
+    total: Nat
+derive ^Eq, ^Debug
+
+impl ^Document Count:
+    type Role = CountRole
+    type SeatId Raiser = Nat
+    type SeatId Watcher = Text
+    fn Described Fixed<<Raiser>>, n = "raiser {n}"
+    fn Described Fixed<<Watcher>>, name = "watcher {name}"
+
+tag Pad.Who of Element $?Text:
+    asking: unit
+
+@Guest: fn unit -> @unit emit Ui.* | Pad.*
+fn @Guest ignore:
+    $?who <- Pad.Who(asking=unit)                                          # 0
+    Ui.Label($text=$"I am {Or $?who, "not told yet"}")                     # 1
+
+@Seated: fn $(k ==> $@(@a emit rest)) -> @$(k ==> a) emit rest
+fn @Seated $seats:
+    for seat, $@guest <- $seats:
+        rebuild $@guest:
+            _
+
+@page: @unit
+@page:
+    let $raisers = $ {{7: $ (@Guest unit)}}
+    ignore <- @Host (@Seated $raisers), \|path, prompt element| match element:   # 0
+        Pad.Who(..): @ $ (? (Told<<Count>> (any ((Fixed<<Raiser>>, (SeatIdAt<<Count, Raiser>> path))))))
+        otherwise: @Element element

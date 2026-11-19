@@ -1,0 +1,7 @@
+# Derived by hand from Part III ch. 6 (a role's equation, or the one for every role, decides each associated type at its index): the teller's answer is its text, the viewer's the total.
+test each_role_read
+
+tick 0
+  added:
+    0: Ui.Label(text="ada sees 4")
+    1: Ui.Label(text="a viewer sees 4")

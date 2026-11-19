@@ -1,0 +1,16 @@
+# A tag's plain field of a `~T` whose `T` is a dynamic, `~$result: Nat` (Type System ch.
+# 1: a field's sigils stand on its name, and a value that holds a dynamic is a type as any
+# other; Semantics ch. 10: a bare `Error(..)` where a `~T` is wanted is that `~T`'s
+# failure; claude/incremental-host-document.md, WD: a foreign World reads a level
+# flattened through).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.* | Count.*
+test mod Tests
+use Ui.*
+
+tag Count.Result of Element unit:
+    ~$result: Nat
+
+@main: @unit emit Ui.* | Count.*
+@main:
+    Count.Result(~$result=Error(kind=Prelude.NotANumber, message="no"))   # 0

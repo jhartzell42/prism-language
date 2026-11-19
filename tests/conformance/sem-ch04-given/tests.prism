@@ -1,0 +1,19 @@
+emit r
+use App.*
+use Fs.*
+
+check quotes:
+    ?Quote cabins, "Oak", 4, 2 => ? 300
+    ?Quote cabins, "Birch", 4, 2 => nil
+    ?Quote cabins, "Pine", 1, 1 => nil
+    ?Quote cabins, "Oak", 1, 0 => nil
+
+check ports:
+    ~Port "8080" => ~ 8080
+    ~Port "99999" => Error(kind=Prelude.Unmet, message="require port <= 65535")
+    ~Port "http" => Error(kind=Prelude.NotANumber, ..)
+
+check messages:
+    Message (~ Contents(text="hi")) => "hi"
+    Message (Error(kind=Fs.NotFound, message="gone")) => "no message today"
+    Message (Error(kind=Fs.Denied, message="no")) => "cannot read the message: no"

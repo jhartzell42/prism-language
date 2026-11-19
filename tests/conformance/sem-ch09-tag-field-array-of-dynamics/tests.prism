@@ -1,0 +1,7 @@
+# The tests of sem-ch09-tag-field-array-of-dynamics.
+emit Ui.* | Count.*
+use App.*
+
+test a_world_reads_the_dynamics_sampled, @main:
+    build
+    click at 0

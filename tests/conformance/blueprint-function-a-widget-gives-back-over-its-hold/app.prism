@@ -1,0 +1,20 @@
+# A widget gives back a function whose blueprint answers with the widget's hold
+# (`@ \|k| @ $count`), and another widget applies it: the function value is built in the
+# build and captures the hold's live dynamic. prismc read the hold through `self` in the
+# build (rustc E0424). No host: suppliers are function values like any other.
+# Written by Claude, 15 November 2026, on the claude-self-hosting branch. Subject to change.
+emit Ui.*
+test mod Tests
+@Shows: fn prompt (fn Nat -> @$Nat emit unit), Nat -> @unit emit Ui.*
+fn @Shows Make, k:
+    $n <- Make k
+    Ui.Label($text=$"shows {$n}")
+@Counter: fn prompt !Ui.Click -> @(fn Nat -> @$Nat emit unit)
+fn @Counter !add:
+    $count <- 0 then $count + (1 on !add)
+    @ \|k| @ $count
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")
+    Make <- @Counter !add
+    @Shows Make, 1

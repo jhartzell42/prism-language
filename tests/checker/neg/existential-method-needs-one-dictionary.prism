@@ -1,0 +1,27 @@
+# An existential of a trait with a method that needs one dictionary for a whole
+# collection: `Total: fn [a] -> Nat` takes the trait's type inside an array, and an array
+# of hidden values has a dictionary an element (the coordinator's first ruling, 11
+# November 2026, on Type System ch. 3, "Existentials": "An existential is the one feature
+# that makes an implementation keep a dictionary at run time", one a packed value), none
+# when it is empty and several when its elements were packed at different types. So the
+# method cannot be asked of `any ^Counted`, and the trait cannot stand behind `any`.
+# The code and the wording are a guess. Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.*
+use Ui.*
+
+trait ^Counted a:
+    Total: fn [a] -> Nat
+
+impl ^Counted Nat:
+    fn Total ns = Fold ns, 0, \|acc, n| acc + n
+
+Hide: fn Nat -> any ^Counted
+fn Hide n = any n
+
+Doubled: fn a -> Nat where a: ^Counted
+fn Doubled x = Total [[x, x]]
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Doubled (Hide 3)}")

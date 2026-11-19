@@ -1,0 +1,6 @@
+# The tests of doc-existential-match-by-role-and-response-exhaustive.
+emit Ui.*
+use App.*
+
+test every_case_said, @page:
+    build

@@ -1,0 +1,6 @@
+# The literals' transcript, derived by hand (ts-ch02-radix-literal.prismtest).
+test radix_literals_mean_their_value
+
+tick 0
+  added:
+    0: Ui.Label(text="15 10 65535 10 18446744073709551616 255")

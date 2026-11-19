@@ -1,0 +1,36 @@
+# Checked by hand against the books' rules (D6: entering an unbounded function is a cycle point, wherever the call stands): each function's entry and its one call are two cycles.
+test a_call_in_an_arm_is_a_cycle
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 2 ticks, 1 to 2
+
+tick 2
+  changed:
+    1: Ui.Label(text="5")
+
+test a_call_in_a_branch_is_a_cycle
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 2 ticks, 1 to 2
+
+tick 2
+  changed:
+    1: Ui.Label(text="5")
+
+test a_call_right_of_and_is_a_cycle
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 2 ticks, 1 to 2
+
+tick 2
+  changed:
+    1: Ui.Label(text="False")

@@ -1,0 +1,7 @@
+# The tests of sem-ch08-late-result-widget-parameter.
+emit Ui.*
+use App.*
+
+test the_parameter_result_is_bound, @main:
+    build
+        => expect Ui.Label(text="got 10")

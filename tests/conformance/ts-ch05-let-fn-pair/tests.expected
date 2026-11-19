@@ -1,0 +1,6 @@
+# Checked by hand against the books' rules.
+test both_names_resolve
+
+tick 0
+  added:
+    0: Ui.Label(text="37")

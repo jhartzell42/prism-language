@@ -1,0 +1,5 @@
+# `Shapes`, whose names the root writes bare under `use Shapes.*`.
+emit r
+
+Double: fn Nat -> Nat
+fn Double n = 2 * n

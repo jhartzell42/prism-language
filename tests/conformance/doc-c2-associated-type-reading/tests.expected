@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 3 ("Associated types": each impl chooses its own, and `Reading g` normalizes at a known head): the thermometer reads the `Nat` 21 twice, 21 + 21 is 42; the weathervane's logged reading is the `Text` "north".
+test each_gauge_reads_its_own
+
+tick 0
+  added:
+    0: Ui.Label(text="42 north")

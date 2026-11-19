@@ -1,0 +1,28 @@
+# A widget with a widget function parameter, applied to its argument and taken as a
+# blueprint value out of an option (Type System ch. 2: a blueprint is an opaque handle
+# and still a value; Semantics ch. 8: "a blueprint builds nothing until a block applies
+# it", then at the applying block's next positions). sem-ch08-widget-parameter-applied
+# with `@Frame @Row` read as a value. Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Row: fn Nat -> @unit
+fn @Row n:
+    Ui.Label($text=$"row {n}")
+
+@Frame: fn (fn Nat -> @unit) -> @unit
+fn @Frame Inner:
+    Ui.Label($text=$"top")
+    Inner 1
+    Inner 2
+    Ui.Label($text=$"bottom")
+
+@Page: @unit
+@Page:
+    match ?Pick True, (@Frame @Row):
+        ? @t: @t
+        nil: Ui.Label($text=$"none")

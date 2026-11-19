@@ -1,0 +1,9 @@
+# The tests of sem-ch09-host-above-for-reads-rows.
+emit Ui.* | Pad.*
+use App.*
+
+test the_host_above_reads_every_row, @host:
+    build
+    click at 0
+    compute
+    compute

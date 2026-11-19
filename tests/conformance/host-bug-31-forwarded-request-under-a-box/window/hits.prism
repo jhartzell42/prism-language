@@ -1,0 +1,152 @@
+# `Window.Hits`, a child module of `Window`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r | Pane.* | Gui.*
+use Window.*
+use Window.Panes.*
+use Window.Hosting.*
+use Window.Widgets.*
+use Window.Layout.*
+
+# ---- hits: the pointer is taken back through each turn above a region; the topmost wins
+
+Contains: fn Rect, Point -> Bool
+fn Contains r, p = r.x <= p.x and p.x < r.x + r.w and r.y <= p.y and p.y < r.y + r.h
+
+let pi = 3.14159265358979
+
+# an angle in radians brought within half a turn either way, for angles up to three turns
+Within: fn Float -> Float
+fn Within a = WrapOnce (WrapOnce (WrapOnce a))
+
+WrapOnce: fn Float -> Float
+fn WrapOnce a = if a > pi: a - 2.0 * pi else: if a < -pi: a + 2.0 * pi else: a
+
+# sine and cosine by their series, in Horner's form, within half a turn
+Sine: fn Float -> Float
+fn Sine angle:
+    let x = Within angle
+    let s = x * x
+    x * (1.0 - s / 6.0 * (1.0 - s / 20.0 * (1.0 - s / 42.0 * (1.0 - s / 72.0 * (1.0 - s / 110.0 * (1.0 - s / 156.0 * (1.0 - s / 210.0)))))))
+
+Cosine: fn Float -> Float
+fn Cosine angle:
+    let x = Within angle
+    let s = x * x
+    1.0 - s / 2.0 * (1.0 - s / 12.0 * (1.0 - s / 30.0 * (1.0 - s / 56.0 * (1.0 - s / 90.0 * (1.0 - s / 132.0 * (1.0 - s / 182.0))))))
+
+Untransform: fn Point, Window.Turn -> Point
+fn Untransform q, t:
+    let rad = Ratio (t.angle * pi), 180.0
+    let dx = Ratio (q.x - t.x), t.scale
+    let dy = Ratio (q.y - t.y), t.scale
+    Point t.x + dx * (Cosine rad) + dy * (Sine rad), t.y - dx * (Sine rad) + dy * (Cosine rad)
+
+Local: fn Hit, Point -> Point
+fn Local h, p = Fold h.turns, p, \|q, t| Untransform q, t
+
+# the window's root: a program's one top element gets the whole window; several stack in a
+# column, each first in the column's room
+TopRoom: fn Nat, Extent -> Room
+fn TopRoom count, size = if count == 1: Loose size.w, size.h else: NaturalRoom True, (Loose size.w, size.h)
+
+LayTop: fn (Path ==> Res), Extent -> Plan
+fn LayTop tops, size = match Kids tops:
+    [[r]]: PlanIn r, (Loose size.w, size.h)
+    otherwise: LayStack tops, (Loose size.w, size.h), True, 0.0, Start
+
+# the topmost hit under the pointer: the last drawn wins
+?HitAt: fn [Hit], Point -> ?Hit
+fn ?HitAt hits, p = Fold hits, nil, \|?top, h| if Contains h.rect, (Local h, p): ? h else: ?top
+
+# the routed input for the place at the end of a chain: one Routed per container on the way,
+# addressed outermost first
+?Deliver: fn [Path], Input -> ?Routed
+fn ?Deliver chain, input:
+    let inward = Fold chain, [[]], \|acc, p| Append [[p]], acc
+    Fold inward, nil, \|?inner, p| ? Routed(path=p, input=(Wrapped ?inner, input))
+
+Wrapped: fn ?Routed, Input -> Input
+fn Wrapped ?inner, input = match ?inner:
+    ? r: Inner r
+    nil: input
+
+# what a press at `p` on a hit says to its place: a click, or a slider's step; an input
+# takes the focus instead (`?FocusChain`), and a background takes the press and says nothing
+?PressFor: fn Hit, Point -> ?Routed
+fn ?PressFor h, p = match h.kind:
+    Clickable: ?Deliver h.chain, Clicked
+    Track low, high: ?Deliver h.chain, (Slid (StepAt low, high, (Ratio ((Local h, p).x - h.rect.x - 4.0), (h.rect.w - 8.0))))
+    Focus: nil
+    Opaque: nil
+
+?ClickAt: fn [Hit], Point -> ?Routed
+fn ?ClickAt hits, p:
+    h <- ?HitAt hits, p
+    ?PressFor h, p
+
+# the step from `low` to `high` nearest a fraction of the way along: a slider's knob is
+# centred 4 points in from either end of its track
+StepAt: fn Nat, Nat, Float -> Nat
+fn StepAt low, high, along:
+    let n = Or (high -? low), 0
+    let x = (Clamp along, 0.0, 1.0) * (Float (Int n))
+    low + Fold (Indices n), 0, \|count, i| if (Float (Int i)) + 0.5 <= x: count + 1 else: count
+
+# a key goes to the focused input while it shows: not to one in a closed dialog
+?RouteKey: fn [Hit], ?[Path], Key -> ?Routed
+fn ?RouteKey hits, ?focus, k:
+    chain <- ?focus
+    require (?FocusRect hits, ?focus) != nil
+    ?Deliver chain, (Typed k)
+
+# focus names the focused place by its chain of paths, which is its identity while it lives;
+# it moves by a press on a text input (`?FocusChain` of the hit), or by Tab to the next input
+# in drawing order
+?NextFocus: fn [Hit], ?[Path] -> ?[Path]
+fn ?NextFocus hits, ?focus:
+    let inputs = Fold hits, [[]], \|acc, h| if h.kind == Focus: Push acc, h.chain else: acc
+    # the inputs after the focused one: a fold that starts keeping once it has passed it
+    let after = match ?focus:
+        ? c: AfterOne inputs, c
+        nil: inputs
+    match after[0]:
+        ? n: ? n
+        nil: inputs[0]
+
+AfterOne: fn [ [Path] ], [Path] -> [ [Path] ]
+fn AfterOne inputs, c:
+    let ((ignore, kept)) = Fold inputs, ((False, [[]])), \|((passed, acc)), x| if passed: ((True, (Push acc, x))) else: ((x == c, acc))
+    kept
+
+# where the focused place is, for the platform's focus ring and input method
+?FocusRect: fn [Hit], ?[Path] -> ?Rect
+fn ?FocusRect hits, ?focus:
+    chain <- ?focus
+    Fold hits, nil, \|?found, h| if ?found == nil and h.chain == chain: ? h.rect else: ?found
+
+?PressOf: fn WindowInput -> ?Point
+fn ?PressOf w = match w:
+    Press p: ? p
+    otherwise: nil
+
+?PressedOf: fn WindowInput -> ?Key
+fn ?PressedOf w = match w:
+    Pressed k: ? k
+    otherwise: nil
+
+?ResizeOf: fn WindowInput -> ?Extent
+fn ?ResizeOf w = match w:
+    Resized x: ? x
+    otherwise: nil
+
+# a press on an input: the focus moves to its place
+?FocusChain: fn Hit -> ?[Path]
+fn ?FocusChain h = if h.kind == Focus: ? h.chain else: nil
+
+?Focused: fn [Path] -> ?[Path]
+fn ?Focused chain = ? chain
+
+?TabOf: fn WindowInput -> ?unit
+fn ?TabOf w = match w:
+    Pressed Tab: ? unit
+    otherwise: nil

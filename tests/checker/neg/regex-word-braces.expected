@@ -1,0 +1,4 @@
+tests/checker/neg/regex-word-braces.prism:2: error[regex]: \b{...} is Rust's only: write \b
+    let r = %/\b{start}/
+              ^
+1 error

@@ -1,0 +1,24 @@
+# `@Host` handed to a widget as a value and applied there: under ruling HP it is a regular
+# widget of the library, so it is applied as any widget value is, its supplier an ordinary
+# function value. Written by Claude, 15 November 2026, on the claude-self-hosting branch.
+# Subject to change.
+emit Ui.*
+test mod Tests
+
+type Supplier = forall o. fn Path, prompt Element Ui.* o -> @o
+type Hosting = fn prompt @unit emit Ui.*, Supplier -> @((unit, $(Path ==> $Elem Ui.*))) emit Ui.*
+
+@guest: @unit emit Ui.*
+@guest:
+    !press <- Ui.Button($label=$"press")                                # 0
+    $n <- 0 then $n + 1 on !press
+    Ui.Label($text=$"pressed {$n}")                                     # 1
+
+@Through: fn prompt Hosting, prompt @unit emit Ui.* -> @unit emit Ui.*
+fn @Through Hosted, @child:
+    ((ignore, $doc)) <- Hosted @child, \|p, prompt e| @Element e        # 0.[p]/0
+    Ui.Label($text=$"{Size $doc} places")                               # 1
+
+@page: @unit
+@page:
+    @Through @Host, @guest                                              # 0

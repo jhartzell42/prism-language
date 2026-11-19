@@ -1,0 +1,5 @@
+tests/checker/neg/test-declares/tests.prism:8: error[test-declares]: a test module declares no tag, trait or impl
+    tag Mark.Dot of Mark
+    ^^^^^^^^^^^^^^^^^^^^
+  fix: declare it in app.prism, the module the test module tests
+1 error

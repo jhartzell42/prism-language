@@ -1,0 +1,6 @@
+# Checked by hand against the books' rules.
+test triples_print
+
+tick 0
+  added:
+    0: Ui.Label(text="Edge(ends=((1, 2, True)))")

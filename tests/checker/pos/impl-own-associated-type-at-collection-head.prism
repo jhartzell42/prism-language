@@ -1,0 +1,14 @@
+# An impl whose head is a collection of its type parameter states an associated type,
+# and its own method gives a value of it: `Inner [a]` is `[Nat]` inside the impl as it is
+# outside (Type System ch. 3: an associated type is normalized before comparing, by the
+# impl whose head matches).
+trait ^Boxed a:
+    type Inner
+    Open: fn a -> Inner a
+
+impl ^Boxed [a]:
+    type Inner = [Nat]
+    fn Open xs = [[Len xs]]
+
+Opened: fn [Bool] -> [Nat]
+fn Opened flags = Open flags

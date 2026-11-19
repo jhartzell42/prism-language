@@ -1,0 +1,23 @@
+# A top-level widget named by a `let` and passed on as a blueprint value (Semantics
+# ch. 4: `let` binds a value, and a blueprint is one; ch. 8: "a blueprint builds nothing
+# until a block applies it"). sem-ch08-blueprint-out-of-value with the `let` between.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Pair: @unit
+@Pair:
+    Ui.Label($text=$"left")
+    Ui.Label($text=$"right")
+
+@Page: fn Bool -> @unit
+fn @Page b:
+    let @w = @Pair
+    match ?Pick b, @w:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    Ui.Label($text=$"end")

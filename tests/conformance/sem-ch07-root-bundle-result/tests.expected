@@ -1,0 +1,22 @@
+# Derived by hand from Semantics ch. 7, "The outputs" (the root's result is an output of the tick) and Type System ch. 2, "Bundles and sparse tuples", by the coordinator's ruling: the World hears the bundle's plain part at the build and each firing of its event after; `($n + 1) on !go` reads `$n` as the tick opened.
+test a_root_ends_on_a_bundle
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Label(text="0")
+  result: "ready"
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="1")
+  result: fired: 1
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="2")
+  result: fired: 2

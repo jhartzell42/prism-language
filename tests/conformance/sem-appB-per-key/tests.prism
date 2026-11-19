@@ -1,0 +1,15 @@
+# `@PerKey`: declarations of sem-appB-per-key.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test fires_per_key, @perkey:
+    build
+    click at 1
+    click at 0
+    click at 2
+    click at 3
+    click at 4
+    click at 0
+    click at 1

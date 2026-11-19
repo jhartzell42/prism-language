@@ -1,0 +1,17 @@
+# The tests of sem-ch07-flatten-expression-in-row.
+emit Ui.*
+use App.*
+
+test over_the_blocks_names, @blockNames:
+    build
+    click at 0
+    compute
+    click at 1
+    compute
+
+test over_the_rows_own_name, @rowName:
+    build
+    click at 0
+    compute
+    click at 1
+    compute

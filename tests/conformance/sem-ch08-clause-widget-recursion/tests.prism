@@ -1,0 +1,7 @@
+# The tests of sem-ch08-clause-widget-recursion.
+emit Ui.*
+use App.*
+
+test each_level_is_counted, @main:
+    build
+        => expect Ui.Label(text="after")

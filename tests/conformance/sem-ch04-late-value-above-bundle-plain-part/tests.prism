@@ -1,0 +1,11 @@
+# The tests of sem-ch04-late-value-above-bundle-plain-part.
+emit Ui.*
+use App.*
+
+test loud, @Page True:
+    build
+    click at 0
+
+test soft, @Page False:
+    build
+    click at 0

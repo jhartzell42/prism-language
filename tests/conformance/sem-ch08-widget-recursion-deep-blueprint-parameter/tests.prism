@@ -1,0 +1,7 @@
+# The tests of sem-ch08-widget-recursion-deep-blueprint-parameter.
+emit Ui.*
+use App.*
+
+test twenty_levels_pass_a_blueprint, @main:
+    build
+        => expect Ui.Label(text="after")

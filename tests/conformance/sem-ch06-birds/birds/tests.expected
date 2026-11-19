@@ -1,0 +1,15 @@
+# Derived by hand from the library: `Call Heron` is "fraaank" and the flock has three birds; `@Spotter Wren` places one button (Semantics ch. 8) and fires its species on a click (Conformance ch. 1, `fired`).
+check calls
+1: ok
+2: ok
+
+test spotting_a_wren
+
+tick 0
+  added:
+    0: Ui.Button(label="Wren: tit-tit-tit")
+
+tick 1
+  in:
+    0: click
+  result: fired: Wren

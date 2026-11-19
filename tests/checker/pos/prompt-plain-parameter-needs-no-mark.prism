@@ -1,0 +1,16 @@
+# A plain parameter needs no `prompt` mark (ruling PT is about events and dynamics): a
+# value given plainly is fixed for the widget, and a result of no event or dynamic never
+# fires. Found by the step 3 build: prismc's own `@CheckMain: fn [Text] -> @unit` was
+# refused `prompt-unmarked`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+module PlainParameter
+emit Ui.*
+
+@Shown: fn Text -> @unit
+fn @Shown label:
+    Ui.Label($text=$"{label}")
+
+@Doubled: fn Nat -> @Nat
+fn @Doubled n:
+    Ui.Label($text=$"{n}")
+    @ n * 2

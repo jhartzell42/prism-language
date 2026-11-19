@@ -1,0 +1,8 @@
+# A generic `let` used above it: declarations of sem-ch04-generic-let-above. Written by
+# Claude on the claude-bugs branch; subject to change.
+emit Ui.*
+use App.*
+use Ui.*
+
+test a_let_used_above_at_two_types, @page:
+    build

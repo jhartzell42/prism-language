@@ -1,0 +1,6 @@
+# The tests of sem-ch08-clauses-emit-parts-of-the-row.
+emit Ui.* | Time.*
+use App.*
+
+test both_clauses, @page:
+    build

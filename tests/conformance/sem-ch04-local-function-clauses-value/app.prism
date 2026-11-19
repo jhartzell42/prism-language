@@ -1,0 +1,17 @@
+# A local function of several clauses passed as a value (Semantics ch. 4: `fn` lines in
+# clauses; a function is a value). Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Medals: fn [Nat] -> Text
+fn Medals places:
+    fn Medal 0 = "gold "
+    fn Medal 1 = "silver "
+    fn Medal k = "none "
+    Concat (Each places, Medal)
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Medals [[1, 0, 5]]}")

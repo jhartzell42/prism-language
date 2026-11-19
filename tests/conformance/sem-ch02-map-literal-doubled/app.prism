@@ -1,0 +1,23 @@
+# A map literal is doubled, `{{k: v}}`, as an array is `[[x, y]]` and a tuple `((a, b))`,
+# and `{{}}` is the empty map (Jimmy's ruling, 12 November: every literal gets a doubled
+# bracket, and single braces mean hold). A map inside a map pairs by the bracket pairing
+# rule. The map type `K ==> V` is unchanged.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Scores: fn Nat -> (Text ==> Nat)
+fn Scores n = {{"ada": n, "bo": n + 2}}
+
+Picked: fn Nat -> (Text ==> Nat)
+fn Picked n = if n == 0: {{}} else: {{"n": n}}
+
+Nested: fn Nat -> (Text ==> (Text ==> Nat))
+fn Nested n = {{"x": {{"y": n, "z": n}}}}
+
+@page: @unit
+@page:
+    let m = Scores 3
+    let inner = Or (Nested 1)["x"], {{}}
+    Ui.Label($text=$"{Or m["ada"], 0} {Or m["bo"], 0} {Size m} {Size (Picked 0)} {Size (Picked 4)} {Size inner}")       # 0

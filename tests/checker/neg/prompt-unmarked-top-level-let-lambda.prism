@@ -1,0 +1,8 @@
+# `prompt-unmarked` at a widget lambda a top-level `let` binds (ruling PT, soundness): it
+# gives its argument back in the same tick under no mark, so a caller trusting its type
+# would miss a same-tick loop through it.
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+let @Pass = \|!e| @ !e

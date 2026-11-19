@@ -1,0 +1,36 @@
+# An alias is the type it names wherever it is declared: a module's declarations stand in
+# any order (Semantics ch. 6, the table of declarations: `type Name = ...` is "a record, a
+# choice, a newtype, a unit type, an alias"), so a record's field, a choice's case and
+# another alias may each name an alias declared below them. Written by Claude on the
+# claude-bugs branch; subject to change.
+type Wrap = record:
+    inner: Later
+
+type Later = [Nat]
+
+Count: fn Wrap -> Nat
+fn Count w = (Or w.inner[0], 0) + 1
+
+type Shade = choice:
+    Dark Depth
+    Light
+
+type Depth = Nat
+
+Tone: fn Shade -> Nat
+fn Tone s = match s:
+    Dark n: n + 1
+    Light: 0
+
+type Pairs a = [Both a]
+type Both a = ((a, a))
+
+Firsts: fn Pairs Nat -> Nat
+fn Firsts ps = Fold ps, 0, \|acc, ((one, two))| acc + one
+
+type First = Second
+type Second = Third
+type Third = Nat
+
+Add: fn First, Nat -> Nat
+fn Add m, n = m + n

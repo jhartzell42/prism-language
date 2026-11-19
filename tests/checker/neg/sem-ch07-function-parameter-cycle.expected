@@ -1,0 +1,5 @@
+tests/checker/neg/sem-ch07-function-parameter-cycle.prism:17: error[prompt-cycle]: a prompt cycle: `!asked`, `!responses`
+        ((results, !asked)) <- Seats $state, !responses
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: break it with a hold: `$last <- start then ...` reads the value as the tick opened
+1 error

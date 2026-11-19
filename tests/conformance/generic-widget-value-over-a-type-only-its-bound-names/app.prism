@@ -1,0 +1,52 @@
+# A generic widget whose type parameter no parameter and no result names, only its bound
+# (`where o: ^Order`) and its emit row (tests/documents/tally's `@Teller`),
+# read as a value at a type (`$ (@Teller<<Quiet>> "ada")`) in a live map of blueprints and
+# built by a `for` and a `rebuild`; on each click it says what a generic function of its
+# own parameter says. Isolated from tests/documents/tally, whose crate wrote the row's
+# handler as `said_f::<O>(..)`, with no `O` in scope there (rustc E0425: cannot find type
+# `O` in this scope).
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Order o:
+    Said: fn Nat -> Text
+
+type Loud = choice:
+    Loud
+
+type Quiet = choice:
+    Quiet
+
+impl ^Order Loud:
+    fn Said n = "CLICKED {n}"
+
+impl ^Order Quiet:
+    fn Said n = "clicked {n}"
+
+# (a value whose type names the order, so the signature names `o`, as tally's
+# `Response (Tallied o) Teller` does)
+type Voice o = choice:
+    Voice
+
+Told: forall o. fn Voice o, Nat -> Text where o: ^Order
+fn Told voice, n = Said<<o>> n
+
+# (a family of no tags, in the emit row only so the signature names `o`, as tally's
+# `Seat.* (Tallied o) Teller` does)
+family Ordered o where o: ^Order
+
+@Teller: forall o. fn Text -> @unit emit Ui.* | Ordered.* o where o: ^Order
+fn @Teller name:
+    !click <- Ui.Button($label=$"{name}")                                  # 0
+    $count <- 0 then $count + 1 on !click
+    $said <- "nothing yet" then Told<<o>> Voice, ($count + 1) on !click
+    Ui.Label($text=$"{name}: {$said}")                                     # 1
+
+@page: @unit emit Ui.* | Ordered.* Quiet
+@page:
+    let $tellers = $ {{"ada": $ (@Teller<<Quiet>> "ada"), "bob": $ (@Teller<<Quiet>> "bob")}}
+    for name, $@teller <- $tellers:                                        # 0, at each name
+        rebuild $@teller:
+            _
+    Ui.Label($text=$"loud says {Told<<Loud>> Voice, 1}")                   # 1

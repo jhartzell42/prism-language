@@ -1,0 +1,4 @@
+tests/checker/neg/regex-trailing-backslash.prism:2: error[regex]: a \ at the end of the pattern
+    let r = %#/\/#
+               ^
+1 error

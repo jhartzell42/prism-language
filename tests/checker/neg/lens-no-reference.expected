@@ -1,0 +1,5 @@
+tests/checker/neg/lens-no-reference.prism:12: error[lens-arity]: a lens takes one reference, and `&Acc` takes none
+    &Acc: fn Vm -> &Int
+    ^^^^
+  fix: write its parameter as a reference, `&Vm`
+1 error

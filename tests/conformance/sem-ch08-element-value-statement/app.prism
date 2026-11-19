@@ -1,0 +1,18 @@
+# `@Element` of an element value bound by a `let` (Semantics ch. 8, "Elements and the
+# element statement": "No implicit conversion from element to blueprint exists, so `let c
+# = Door.Chime(..)` is a value and `@Element c` a blueprint"; `@Element` is the statement
+# as a function, at the same path). Bare, the label's output is `unit`; bound, the
+# button's clicks. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@main: @unit
+@main:
+    !inc <- Ui.Button($label=$"inc")                             # 0
+    $n <- 0 then $n + 1 on !inc
+    let made = Ui.Label($text=$"made {$n}")
+    @Element made                                                # 1
+    let button = Ui.Button($label=$"go")
+    !go <- @Element button                                       # 2
+    $gone <- 0 then $gone + 1 on !go
+    Ui.Label($text=$"went {$gone}")                              # 3

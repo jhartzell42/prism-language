@@ -1,0 +1,12 @@
+# Jimmy's ruling, 12 November: `forall`. Only a signature's `forall` puts its variables
+# in scope in the body. `Swap`'s signature has no `forall`, so its `b` is not in scope in
+# the body, and `Make<<b>>` names nothing: `unknown-name`. With `Swap: forall a b. fn
+# ((a, b)) -> ((b, a))` the program checks (conformance/forall-three-jobs).
+# Expected diagnostic derived by hand. Written by Claude on the claude-self-hosting
+# branch; subject to change.
+Make: fn b, a -> ((b, a))
+fn Make second, first = ((second, first))
+
+Swap: fn ((a, b)) -> ((b, a))
+fn Swap pair = match pair:
+    ((first, second)): Make<<b>> second, first

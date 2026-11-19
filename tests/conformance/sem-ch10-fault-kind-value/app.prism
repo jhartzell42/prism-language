@@ -1,0 +1,34 @@
+# A fault kind is a value of the row `Fault` (Semantics ch. 10, "`~T`, `Error` and `Fault`
+# as a row"): it is compared (`e.kind == Fs.NotFound`), kept in a list and in a program's
+# own record, and passed to a generic function. Written by Claude on the claude-lowering
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Report = record:
+    kind: Fault
+    count: Nat
+
+Gone: fn Nat -> Error
+fn Gone n = Error(kind=Fs.NotFound, message="gone {n}")
+
+Why: fn Error -> Text
+fn Why e = if e.kind == Fs.NotFound: "missing" else: e.message
+
+Kinds: fn [Error] -> [Fault]
+fn Kinds es = Each es, \|e| e.kind
+
+First: fn [a], a -> a
+fn First xs, d = Or xs[0], d
+
+Denied: fn Report -> Bool
+fn Denied r = r.kind == Fs.Denied
+
+@main: @unit
+@main:
+    let e = Gone 1
+    let kinds = Kinds [[e, (Error(kind=Fs.Denied, message="no"))]]
+    let report = Report(kind=(First (Drop kinds, 1), Fs.Failed), count=(Len kinds))
+    let same = (First kinds, Fs.Failed) == e.kind
+    Ui.Label($text=$"{Why e} {Len kinds} {Denied report} {report.count} {same}")    # 0

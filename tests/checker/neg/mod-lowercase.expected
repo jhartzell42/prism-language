@@ -1,0 +1,5 @@
+tests/checker/neg/mod-lowercase/app.prism:4: error[mod-lowercase]: `mod shapes`: a module's name is capitalised, and every `mod` line declares a module with a namespace of its own
+    mod shapes
+    ^^^^^^^^^^
+  fix: write `mod Shapes` (its file shapes.prism, with a header of its own)
+1 error

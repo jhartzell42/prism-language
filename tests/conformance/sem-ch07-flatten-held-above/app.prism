@@ -1,0 +1,21 @@
+# sem-ch07-flatten-held with its lines in the other order: the `@Flatten` and the label
+# stand above the hold of dynamics they read, and that hold above the holds it takes
+# whole (Semantics ch. 4, "Binding groups and cycles": a widget block is one binding
+# group, any line may use any name the block binds, and the order of its lines decides
+# positions and nothing else). Written by Claude on the claude-lowering branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+
+$Sel: fn Bool, $Nat, $Nat -> $Nat
+fn $Sel useB, $p, $q = if useB: $q else: $p
+
+@page: @unit
+@page:
+    $shown <- @Flatten $$cur
+    Ui.Label($text=$"{$shown}")                              # 0
+    !inc <- Ui.Button($label=$"inc")                         # 1
+    !swap <- Ui.Button($label=$"swap")                       # 2
+    $$cur <- $a then $Sel (True on !swap), $a, $b
+    $a <- 0 then $a + 1 on !inc
+    $b <- 100 then $b + 1 on !inc

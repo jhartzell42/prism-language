@@ -1,0 +1,13 @@
+# The tests of sem-ch04-row-teardown.
+emit Ui.* | Test.*
+use App.*
+
+test a_departed_row_is_silent, @rows:
+    build
+    click at 1
+        => expect Ui.Label(text="heard 2")
+    click at 0, click at 1
+        => expect Ui.Label(text="heard 4")
+        => expect_none Ui.Label(text="two")
+    click at 1
+        => expect Ui.Label(text="heard 5")

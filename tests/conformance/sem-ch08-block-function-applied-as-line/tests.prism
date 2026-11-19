@@ -1,0 +1,7 @@
+# The tests of sem-ch08-block-function-applied-as-line.
+emit Ui.*
+use App.*
+
+test t, @table:
+    build
+    click Ui.Button(label="add")

@@ -1,0 +1,23 @@
+# A widget that calls itself in a static position deeper than sixteen levels and gives a
+# plain result its caller reads (Semantics ch. 4: "widget functions recurse as deep as
+# their data"; ch. 8: `<-` builds the child and binds its result; ruling TC). Each level
+# adds its number to the result of the level below. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Chain: fn Nat -> @Nat
+fn @Chain 0:
+    Ui.Label($text=$"end")
+    @ 0
+fn @Chain n:
+    Ui.Label($text=$"level {n}")
+    below <- match n -? 1:
+        ? m: @Chain m
+        nil: @ 0
+    @ (below + n)
+
+@main: @unit
+@main:
+    total <- @Chain 20                                           # 0 to 20
+    Ui.Label($text=$"total {total}")                              # 21

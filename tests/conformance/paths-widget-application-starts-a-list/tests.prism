@@ -1,0 +1,13 @@
+# The places of nested widgets and a building arm: declarations of
+# paths-widget-application-starts-a-list.
+emit Ui.*
+use App.*
+use Ui.*
+
+test a_widget_numbers_its_places_in_its_own_list, @Page True:
+    build
+        => expect Ui.Label(text="after")
+
+test an_arm_that_builds_nothing_moves_nothing, @Page False:
+    build
+        => expect Ui.Label(text="after")

@@ -1,0 +1,7 @@
+# Derived by hand from Semantics ch. 2 and Appendix B (`Len` of a text counts its bytes): "café €😀A" is 3 + 2 + 1 + 3 + 4 + 1 = 14 bytes; λ places as itself twice; `?CharOf` gives λ for 955 and nil for a surrogate and past 10FFFF, each nil placed as `-`.
+test escapes_name_any_scalar_value
+
+tick 0
+  added:
+    0: Ui.Label(text="café €😀A 14 λλ")
+    1: Ui.Label(text="λ--")

@@ -1,0 +1,8 @@
+# Derived by hand from Semantics Appendix B, Text and ch. 8's `Edit`: `?StepBack` gives the character before the cursor and the cursor at its start, so Backspace drops the last character whole (界, 3 bytes: 15 down to 12) and does nothing to an empty text.
+check step_back
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok

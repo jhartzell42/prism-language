@@ -1,0 +1,146 @@
+# Chess at a command line: participants that hold a seat and speak in lines. One line in,
+# one line out: a move in coordinates (`e2e4`, `e7e8q`), `resign`, `draw`, `accept`,
+# `moves`, `legal`, `leave`. A player's terminal also prints the opponent's move when it
+# is played, a draw offer when it is made and the result when the game ends. It never
+# draws a board. A player speaks the library's `Seat.* ChessGame Player`, a spectator
+# `Seat.* ChessGame Spectator`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit rest | Console.* | Seat.*
+use Documents.*
+use Rules.*
+use Notation.*
+use Game.*
+use Words.*
+use Told.*
+use Console.*
+
+# what a line typed asks for
+type Typed = choice:
+    Requesting PlayerRequest           # a move, `resign`, `draw`, `accept`
+    ListMoves                          # `moves`
+    ListLegal                          # `legal`
+    Depart                             # `leave`
+    Unreadable Text                    # anything else, as typed
+derive ^Eq, ^Debug
+
+let words = {{"resign": (Requesting Resign), "draw": (Requesting OfferDraw), "accept": (Requesting AcceptDraw), "moves": ListMoves, "legal": ListLegal, "leave": Depart}}
+
+TypedOf: fn Text -> Typed
+fn TypedOf line = match words[Lower line]:
+    ? typed: typed
+    nil: match ?ParseMove line:
+        ? move: Requesting (MakeMove move)
+        nil: Unreadable line
+
+# what a terminal is told, as a value; `LineOf` words it
+type Said = choice:
+    Agreed                             # the request is accepted
+    Refused ChessReason                # the request is declined, and why
+    Unread Text                        # the line is no move and no command
+    Theirs ChessMove                        # a move by another seat
+    DrawOffered                        # the opponent offers a draw
+    Over ChessResult                   # the game has ended
+    Listed [ChessMove]                      # the moves played, or the legal moves
+    NoRequests                         # a request typed at a seat that may ask nothing
+    NotToldYet                         # a list asked for before the seat is told the game
+derive ^Eq, ^Debug
+
+LineOf: fn Said -> Text
+fn LineOf Agreed = "ok"
+fn LineOf (Refused why) = "declined: {ReasonText why}"
+fn LineOf (Unread typed) = "cannot read `{typed}`"
+fn LineOf (Theirs move) = Spelled move
+fn LineOf DrawOffered = "draw offered"
+fn LineOf (Over result) = "over: {ResultText result}"
+fn LineOf (Listed moves) = Joined (Each moves, Spelled), " "
+fn LineOf NoRequests = "a spectator asks for nothing"
+fn LineOf NotToldYet = "loading"
+
+?Lines: fn [Said] -> ?[Text]
+fn ?Lines said = if (Len said) == 0: nil else: ? (Each said, LineOf)
+
+# who made the move at this place in the game's moves: White the first, Black the second
+MoverOf: fn Nat -> Color
+fn MoverOf index = if index mod 2 == 0: White else: Black
+
+# The news in a game since the game this terminal was told before: each new move that is
+# not this seat's own, a draw offer by the opponent, and the result. The first game a
+# terminal is told has no news in it: `moves` lists what was played before it sat down.
+News: fn ?Color, ?ChessGame, ChessGame -> [Said]
+fn News ?mine, nil, now = [[]]
+fn News ?mine, (? before), now:
+    let from = Len before.moves
+    let ((ignore, moved)) = Fold (Drop now.moves, from), ((from, [[]])), \|((index, said)), move| ((index + 1, (if (? (MoverOf index)) != ?mine: Push said, (Theirs move) else: said)))
+    let offered = if now.?offered != nil and now.?offered != ?mine and now.?offered != before.?offered: Push moved, DrawOffered else: moved
+    match now.?result:
+        ? result: if before.?result == nil: Push offered, (Over result) else: offered
+        nil: offered
+
+# ---- a player
+
+GameOf: fn PlayerTold -> ChessGame
+fn GameOf told = told.game
+
+?Before: fn ?PlayerTold -> ?ChessGame
+fn ?Before nil = nil
+fn ?Before (? told) = ? told.game
+
+# what a line is answered with from what the seat is told, with no request made
+Answered: fn ?PlayerTold, Typed -> [Said]
+fn Answered ?told, (Requesting request) = [[]]
+fn Answered ?told, Depart = [[]]
+fn Answered ?told, (Unreadable typed) = [[(Unread typed)]]
+fn Answered nil, listed = [[NotToldYet]]
+fn Answered (? told), ListMoves = [[(Listed told.game.moves)]]
+fn Answered (? told), ListLegal = [[(Listed told.legal)]]
+
+?RequestOf: fn Typed -> ?PlayerRequest
+fn ?RequestOf (Requesting request) = ? request
+fn ?RequestOf other = nil
+
+# `leave` leaves and asks for nothing: the game stands
+?Going: fn Typed -> ?unit
+fn ?Going Depart = ? unit
+fn ?Going other = nil
+
+Replied: fn Response ChessGame Player -> [Said]
+fn Replied Accepted = [[Agreed]]
+fn Replied (Declined why) = [[(Refused why)]]
+
+# A player at a terminal named for its color. What it prints comes from its seat's answer
+# and its requests' responses alone: in one tick, the response's line first, then the
+# news, then the answer to a list asked for.
+@LinePlayer: fn Color -> @unit emit r | Console.* | Seat.* ChessGame Player
+fn @LinePlayer color:
+    $?told <- Seat.Query($query=$ Whole)                             # 0
+    !line <- Console.Read(name=(Debug color))                         # 1
+    let !typed = TypedOf !line
+    !response <- Seat.Request(!requests=(!Filter (?RequestOf !typed)))   # 2
+    Seat.Leave(!?leaves=(nil on (!Filter (?Going !typed))))          # 3
+    !told <- @Told $?told
+    $?before <- nil then ? !told                                     # what it was told last
+    let !news = News (? color), (?Before $?before), (GameOf !told)
+    Console.Print(name=(Debug color), !lines=(!Filter (?Lines (!MergeWith Append, [[(Replied !response), !news, (Answered $?told, !typed)]]))))   # 4
+
+# ---- a spectator
+
+Shown: fn ?ChessGame, Typed -> [Said]
+fn Shown ?game, (Requesting request) = [[NoRequests]]
+fn Shown ?game, ListLegal = [[NoRequests]]
+fn Shown ?game, Depart = [[]]
+fn Shown ?game, (Unreadable typed) = [[(Unread typed)]]
+fn Shown nil, ListMoves = [[NotToldYet]]
+fn Shown (? game), ListMoves = [[(Listed game.moves)]]
+
+# A spectator at a terminal named for it: every move as it is played, the result, `moves`
+# and `leave`. Its requests are `Never`, so a move typed here is answered in words and
+# goes nowhere, and it leaves with no last request.
+@LineSpectator: fn Text -> @unit emit r | Console.* | Seat.* ChessGame Spectator
+fn @LineSpectator name:
+    $?game <- Seat.Query($query=$ Whole)                             # 0
+    !line <- Console.Read(name=name)                                 # 1
+    let !typed = TypedOf !line
+    Seat.Leave(!?leaves=(nil on (!Filter (?Going !typed))))          # 2
+    !told <- @Told $?game
+    $?before <- nil then ? !told
+    Console.Print(name=name, !lines=(!Filter (?Lines (!MergeWith Append, [[(News nil, $?before, !told), (Shown $?game, !typed)]]))))   # 3

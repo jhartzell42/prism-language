@@ -1,0 +1,6 @@
+# Derived by hand from Appendix B, Types: the lambda in the record gives `Equal`, and each list holds the one zoo's field; the run agrees byte for byte.
+test prelude_types_are_spelled
+
+tick 0
+  added:
+    0: Ui.Label(text="Equal 1 1 1")

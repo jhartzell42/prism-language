@@ -1,0 +1,7 @@
+# The tests of ts-ch02-checked-cast-match.
+emit Ui.*
+use App.*
+
+test checked_cast_match, @main:
+    build
+        => expect Ui.Label(text="4 9 some 2 none")

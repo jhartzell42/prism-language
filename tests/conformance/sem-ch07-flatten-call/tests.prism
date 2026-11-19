@@ -1,0 +1,10 @@
+# The tests of sem-ch07-flatten-call.
+emit Ui.*
+use App.*
+
+test the_flatten_adopts_each_constant, @page:
+    build
+    click at 0
+    compute
+    click at 1
+    compute

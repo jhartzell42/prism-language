@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 5 (a function is a value, and so is its argument): 1, 2, 3 each times 5 sum to 30; doubled they sum to 12.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="42")

@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 5 (a type parameter in no parameter's type is the call's): an empty array's length is 0, `Twice "a"` holds two, `Pick` gives its default for `nil`; the run agrees byte for byte.
+test type_arguments_come_from_the_call
+
+tick 0
+  added:
+    0: Ui.Label(text="0 2 3 0 2 d 7 0 2")

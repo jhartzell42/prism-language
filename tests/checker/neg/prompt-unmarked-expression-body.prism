@@ -1,0 +1,9 @@
+# `prompt-unmarked` at a widget function whose body is one expression (ruling PT,
+# soundness): `fn @Pass !passed = @ !passed` is read against its marks as a block body is;
+# unread, its callers would trust a signature that marks nothing.
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+@Pass: fn !Nat -> @!Nat
+fn @Pass !passed = @ !passed

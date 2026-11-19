@@ -1,0 +1,5 @@
+# A module named as the canvas World's C++ namespace, for ts-ch01-module-named-runtime.
+emit r
+
+Run: fn Nat -> Nat
+fn Run n = n + 1

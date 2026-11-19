@@ -1,0 +1,9 @@
+tests/checker/neg/trait-where-ring.prism:6: error[trait-cycle]: the trait `^Up` asks for itself: its `where` names a ring of traits, `^Up`, `^Down`
+    trait ^Up a where a: ^Down:
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: drop the `where` of one trait of the ring
+tests/checker/neg/trait-where-ring.prism:9: error[trait-cycle]: the trait `^Down` asks for itself: its `where` names a ring of traits, `^Down`, `^Up`
+    trait ^Down a where a: ^Up:
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: drop the `where` of one trait of the ring
+2 errors

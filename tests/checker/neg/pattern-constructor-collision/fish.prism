@@ -1,0 +1,11 @@
+# `Fish`, a child module of the root, with constructors named as `Birds`'s are.
+emit r
+
+type Kind = choice:
+    Small
+    Huge
+    Sized Nat
+
+type Pair = record:
+    left: Nat
+    right: Nat

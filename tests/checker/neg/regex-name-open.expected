@@ -1,0 +1,4 @@
+tests/checker/neg/regex-name-open.prism:2: error[regex]: a group name that is never closed
+    let r = %/(?<n/
+              ^
+1 error

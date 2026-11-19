@@ -1,0 +1,13 @@
+# The tests of sem-ch09-host-bundle-function-part-answer.
+emit Ui.* | Pad.*
+use App.*
+
+test a_bundle_with_a_function_answered, @mocked:
+    build
+        => expect Ui.Label(text="0")
+    click at 0
+    compute
+        => expect Ui.Label(text="5")
+    click at 0
+    compute
+        => expect Ui.Label(text="10")

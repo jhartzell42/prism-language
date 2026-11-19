@@ -1,0 +1,9 @@
+# The tests of sem-ch07-updated-row-parameter.
+emit Ui.*
+use App.*
+use Ui.*
+
+test a_row_hears_its_blocks_parameter, @page:
+    build
+    click at 0
+    click at 0

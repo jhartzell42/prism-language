@@ -1,0 +1,6 @@
+# The tests of sem-appb-utf8-bytes.
+emit Ui.*
+use App.*
+
+test round_trip, @page:
+    build

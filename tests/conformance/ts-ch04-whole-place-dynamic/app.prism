@@ -1,0 +1,19 @@
+# A place's dynamic output passed whole to a function that takes it so (Type System ch.
+# 4, Application; Semantics ch. 9: an element of output `$Nat` answers a dynamic, its
+# first value asked at the build). Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+tag Pad.Gauge of Element $Nat:
+    name: Text
+
+Wrap: fn $Nat -> [$Nat]
+fn Wrap $a = [[$a]]
+
+@rows: @unit
+@rows:
+    $g <- Pad.Gauge(name="g")                                    # 0
+    for $d <- Wrap $g:                                           # 1/[0]
+        Ui.Label($text=$"row {$d}")                              # 1/[0]/0

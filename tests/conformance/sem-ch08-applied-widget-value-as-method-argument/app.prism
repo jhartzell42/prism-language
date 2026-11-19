@@ -1,0 +1,23 @@
+# A widget applied read as a blueprint value in a method call's argument
+# (`loud.?Pick(@Tile 5)`, the call `?Pick loud, @Tile 5` written as a method; Semantics ch. 8: a
+# blueprint is a value, and a function may take one). Given as a plain call's argument
+# the same lowers (sem-ch08-blueprint-value-gives-back). `ValueWidgetsIn` looks at a
+# call's arguments, not a method call's. Reaches `GlobalCall`'s refusal "the widget function
+# @Tile as a value" on prismc-fd1.
+# Written by Claude (sweep-7, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Tile: fn Nat -> @unit
+fn @Tile k:
+    Ui.Label($text=$"tile {k}")
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    match loud.?Pick(@Tile 5):                                           # 0
+        ? @t: @t
+        nil: Ui.Label($text=$"none")

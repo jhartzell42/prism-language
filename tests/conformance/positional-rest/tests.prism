@@ -1,0 +1,7 @@
+# `(..)` on a positional case: declarations of positional-rest.prism.
+emit Ui.*
+use App.*
+use Ui.*
+
+test the_rest_pattern_matches_the_case, @shapes:
+    build

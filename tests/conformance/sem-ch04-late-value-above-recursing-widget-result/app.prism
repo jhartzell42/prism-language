@@ -1,0 +1,33 @@
+# A widget of several clauses applied, above the line that gives it, to the late plain
+# result of a widget of one clause that calls itself, whose arm gives that result from
+# what its own lines build (Semantics ch. 4, "Binding groups and cycles": any line may use
+# any name the block binds, and "the order of a group's lines decides positions and
+# nothing else"; "widget functions recurse as deep as their data"; ch. 8: `<-` builds the
+# child and binds its plain result, and a widget application is transparent; ruling TC).
+# Nothing here is a cycle. Reaches `ArmRowOf`'s two refusals on keep-B.
+# Written by Claude (sweep-4, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Wide: fn Nat -> @Nat
+fn @Wide 3:
+    Ui.Label($text=$"three")
+    @ 1
+fn @Wide k:
+    @ 2
+
+@Count: fn Nat -> @Nat
+fn @Count d:
+    match d -? 1:
+        ? less:
+            Ui.Label($text=$"level {d}")
+            v <- @Count less
+            @ v + 1
+        nil: @ 1
+
+@main: @unit
+@main:
+    w <- @Wide n                                                       # 0
+    Ui.Label($text=$"wide {w}")                                        # 1
+    n <- @Count 2                                                      # 2, 3

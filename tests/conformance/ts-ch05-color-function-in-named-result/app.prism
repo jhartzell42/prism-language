@@ -1,0 +1,24 @@
+# A function value of its callee's own color inside a named type's argument, in the value
+# a call returns (Type System ch. 5: a color variable is decided at each call; here the
+# call makes `u` bounded, so the record that comes back holds a bounded function, called
+# at once).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Holder a = record:
+    item: a
+
+Held: u fn (u fn Nat -> Nat) -> Holder (u fn Nat -> Nat)
+fn Held F = Holder(item=F)
+
+Through: fn Nat -> Nat
+fn Through k:
+    let h = Held (\|n| n + 1)
+    let F = h.item
+    F k
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Through 5}")                               # 0

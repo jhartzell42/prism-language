@@ -1,0 +1,6 @@
+# The tests of sem-ch08-widget-value-generic-through-local-function.
+emit Ui.*
+use App.*
+
+test each_instance_is_built, @Page:
+    build

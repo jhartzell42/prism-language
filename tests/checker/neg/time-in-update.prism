@@ -1,0 +1,6 @@
+# `time-in-update`: an `&` block cannot see time.
+let $zero = $ 0
+
+Reset: fn Int -> Int
+fn Reset a = update a:
+    &_ <= $zero

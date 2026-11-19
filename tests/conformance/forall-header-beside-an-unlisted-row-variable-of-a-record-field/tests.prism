@@ -1,0 +1,6 @@
+# The tests of forall-header-beside-an-unlisted-row-variable-of-a-record-field.
+emit Ui.*
+use App.*
+
+test counted_through_the_record, @page:
+    build

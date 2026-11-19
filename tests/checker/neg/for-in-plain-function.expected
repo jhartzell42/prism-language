@@ -1,0 +1,4 @@
+tests/checker/neg/for-in-plain-function.prism:11: error[mismatch]: expected `Nat ==> Nat`, found `@(Nat ==> Nat)`
+    fn Doubles xs = for x <- xs: @ x * 2
+                    ^^^^^^^^^^^^^^^^^^^^
+1 error

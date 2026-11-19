@@ -1,0 +1,24 @@
+# An impl's widget method, written in the root, inlined where a generic widget of another
+# module applies it (`@Twice` of `Framing`): its body names the root's own constructor,
+# `Caption`, which `Framing` never names, and reads it in the root. Found by the p19 run
+# on chess (the chess impl's `@HostSeats` building `ChessResults` inside the library's
+# `@HostDocument`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+mod Framing
+test mod Tests
+use Framing.*
+
+type Box = record:
+    size: Nat
+
+type Caption = record:
+    text: Text
+
+impl ^Framed Box:
+    fn @Frame box:
+        Ui.Label($text=$ (Caption(text="box {box.size}")).text)                 # 0 and 1
+
+@page: @unit
+@page:
+    @Twice (Box(size=3))

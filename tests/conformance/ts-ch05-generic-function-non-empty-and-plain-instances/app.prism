@@ -1,0 +1,43 @@
+# One generic function used at `[Nat]+` and at `[Nat]`, whose trait has an impl for each
+# (Type System ch. 2, "Collections": `[a]+` is a type of its own, read as the `[a]` where
+# one is wanted; ch. 3: an impl is chosen by the type; ch. 5: a type variable is decided
+# at each call). The function reads a generic widget as a blueprint value, so the widget
+# is built once for each of the two types, and each building asks its own impl.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+trait ^Named a:
+    Name: fn a -> Text
+
+impl ^Named [Nat]:
+    fn Name xs = "plain"
+
+impl ^Named [Nat]+:
+    fn Name xs = "non-empty"
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Shown: fn a, Text -> @unit where a: ^Named
+fn @Shown x, label:
+    Ui.Label($text=$"{label}={Name x}")
+
+?Wrapped: fn a -> ?@unit where a: ^Named
+fn ?Wrapped x = ?Pick True, (@Shown x, "n")
+
+Called: fn a -> Text where a: ^Named
+fn Called x = Name x
+
+@Page: @unit
+@Page:
+    let some: [Nat]+ = [[1, 2]]+
+    let plain: [Nat] = [[1, 2]]
+    Ui.Label($text=$"{Called some} {Called plain}")
+    match ?Wrapped some:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    match ?Wrapped plain:
+        ? @t: @t
+        nil: Ui.Label($text=$"none")

@@ -1,0 +1,9 @@
+# The tests of sem-ch08-blueprint-value-from-or-in-late-numbered-arm.
+emit Ui.*
+use App.*
+
+test loud, @Page True:
+    build
+
+test soft, @Page False:
+    build

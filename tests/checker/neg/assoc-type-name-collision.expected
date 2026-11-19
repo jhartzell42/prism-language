@@ -1,0 +1,13 @@
+tests/checker/neg/assoc-type-name-collision.prism:25: error[collision]: `Reason` here is the program's type `Reason`, which is no associated type of `^Document`
+        type Reason Player = Reason
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: write the associated type through its trait, as `^Document.Reason`
+tests/checker/neg/assoc-type-name-collision.prism:26: error[collision]: `Reason` here is the program's type `Reason`, which is no associated type of `^Document`
+        type Reason Spectator = Never
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: write the associated type through its trait, as `^Document.Reason`
+tests/checker/neg/assoc-type-name-collision.prism:28: error[collision]: `Reason` here is the program's type `Reason`, which takes no parameter, given two
+    Why: fn Reason Board Player -> Text
+            ^^^^^^^^^^^^^^^^^^^
+  fix: write the associated type through its trait, as `^Document.Reason`
+3 errors

@@ -1,0 +1,12 @@
+# The trait of impl-widget-method-reads-its-own-module (the root says why): a widget
+# method and a generic widget that applies it. Written by Claude on the
+# claude-self-hosting branch; subject to change.
+emit Ui.*
+
+trait ^Framed d:
+    @Frame: fn d -> @unit emit Ui.*
+
+@Twice: forall d. fn d -> @unit emit Ui.* where d: ^Framed
+fn @Twice x:
+    @Frame x
+    @Frame x

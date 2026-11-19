@@ -1,0 +1,8 @@
+# Derived by hand: an opened crate is the crate (the default `Item` is the box itself), an
+# opened wrapper the wrapper, an opened pair its first; a crate's unit is the default
+# `Text`, a pair's the `Nat` its impl states.
+test assoc_default
+
+tick 0
+  added:
+    0: Ui.Label(text="3 7 a 3kg 3 2 [[1, 3]]")

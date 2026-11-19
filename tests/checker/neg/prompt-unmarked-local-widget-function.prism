@@ -1,0 +1,15 @@
+# `prompt-unmarked` at a block's own widget function (ruling PT): a local `fn @Pass` is
+# read against its signature's marks as a top-level one is. Unchecked, its callers would
+# trust the signature, and a same-tick loop through it would go unseen (soundness).
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+@host: @unit
+@host:
+    @Pass: fn !Nat -> @!Nat
+    fn @Pass !passed:
+        @ !passed
+    !press <- Ui.Button($label=$"press")
+    !back <- @Pass (1 on !press)
+    Ui.Label($text=$"pressed")

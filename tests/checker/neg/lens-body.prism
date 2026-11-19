@@ -1,0 +1,21 @@
+# `lens-body`: a lens's body is a reference from its parameter, a lens path or a lens
+# applied to one (Semantics ch. 5, "The borrow rule": "A lens's result is alive while its
+# argument is", and "Nothing else makes a reference"); and its parameter is a reference,
+# written with `&` ("A named lens takes `&` on its name and its one parameter").
+# Written by Claude on the claude-lowering branch; subject to change.
+type Regs = record:
+    acc: Int
+    x: Int
+
+type Vm = record:
+    pc: Nat
+    regs: Regs
+
+&Acc: fn &Vm -> &Int
+fn &Acc &vm = 0
+
+&Spare: fn &Vm -> &Int
+fn &Spare vm = vm.regs.x
+
+&Sum: fn &Vm -> &Int
+fn &Sum &vm = &vm.regs.acc + &vm.regs.x

@@ -1,0 +1,11 @@
+# Derived by hand: the label shows the map's size, 20,000, and a write of the same map changes nothing.
+test one_write
+
+tick 0
+  added:
+    0: Ui.Button(label="same")
+    2: Ui.Label(text="20000")
+
+tick 1
+  in:
+    0: click

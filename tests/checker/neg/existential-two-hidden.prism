@@ -1,0 +1,19 @@
+# `mismatch`: an existential meeting a parameter that is not one is unpacked there into a
+# fresh rigid type with its bounds as givens (Type System ch. 5, "Existentials are
+# dictionaries"), so the two `any ^Eq` given to `Same`'s one `a` hide two types, and do
+# not meet; `any ^Eq` has no `^Eq` of its own (Jimmy, 9 November 2026). `Same` of one
+# hidden value with itself, through `Twice`, checks.
+Same: fn a, a -> Bool where a: ^Eq
+fn Same x, y = x == y
+
+Twice: fn a -> Bool where a: ^Eq
+fn Twice x = Same x, x
+
+HideNat: fn Nat -> any ^Eq
+fn HideNat n = any n
+
+HideText: fn Text -> any ^Eq
+fn HideText t = any t
+
+Checks: fn Nat -> Bool
+fn Checks n = (Twice (HideNat n)) and Same (HideNat n), (HideText "hi")

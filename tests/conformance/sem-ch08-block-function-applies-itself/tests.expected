@@ -1,0 +1,19 @@
+# Derived by hand from Semantics ch. 4 (a function of a block reads the block's names), ch. 8 (a widget applied is transparent; one that calls itself builds as deep as its data) and ruling TC (places are counted as built): three levels each build their label, the last arm builds "ground", and the block's label takes the next number; the click moves the three labels that read $count, in its own tick. Under ruling PL each application of `@Tower` is one place with a list of its own: the table's at 1, each deeper one the arm's place 0 of the `match` at its caller's 1 (`1/1.0/..`); "after" is the table's 2.
+test t
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/0: Ui.Label(text="level 2 at 0")
+    1/1.0/0: Ui.Label(text="level 1 at 0")
+    1/1.0/1.0/0: Ui.Label(text="level 0 at 0")
+    1/1.0/1.0/1.0: Ui.Label(text="ground")
+    2: Ui.Label(text="after")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1/0: Ui.Label(text="level 2 at 1")
+    1/1.0/0: Ui.Label(text="level 1 at 1")
+    1/1.0/1.0/0: Ui.Label(text="level 0 at 1")

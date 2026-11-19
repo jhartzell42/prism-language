@@ -1,0 +1,9 @@
+emit Ui.* | Fs.*
+use App.*
+use Fs.*
+
+test the_footer_goes_to_the_old_page, @journal:
+    build
+    click Ui.Button(label="Next page")
+        => requested Fs.File(path="page1.txt"), Write "end of page 1\n"
+        => unrequested Fs.File(path="page2.txt")

@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 9 ("How a supplier answers": a plain output is answered once, by a plain value, at the place's build; a computed answer's place is not re-emitted, so the host's document shows none of the child's places): the number reads 7 and the word "w", the child's result is "w7".
+test an_answer_bound_outside_its_arm
+
+tick 0
+  added:
+    1: Ui.Label(text="w7")

@@ -1,0 +1,20 @@
+# `may-not-end`: a local `fn` is a definition of the shrink check (pick LF). A call of a
+# local is never a global's, so `Spin`'s call of itself was an edge to nothing; `Sum`'s
+# local `Go` takes its tree apart, and checks clean.
+type Tree = choice:
+    Leaf Nat
+    Node Tree, Tree
+
+Grow: fn Nat -> Nat
+fn Grow n:
+    Spin: fn Nat -> Nat
+    fn Spin k = Spin k
+    Spin n
+
+Sum: fn Tree -> Nat
+fn Sum t:
+    Go: fn Tree -> Nat
+    fn Go x = match x:
+        Leaf n: n
+        Node l, r: (Go l) + (Go r)
+    Go t

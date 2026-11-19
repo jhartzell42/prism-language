@@ -1,0 +1,5 @@
+# `Words`, a child module of the root in a file of its own.
+emit r
+
+Name: fn Nat -> Text
+fn Name n = "{n} units"

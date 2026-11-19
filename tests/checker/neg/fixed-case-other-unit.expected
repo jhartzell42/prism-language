@@ -1,0 +1,4 @@
+tests/checker/neg/fixed-case-other-unit.prism:16: error[mismatch]: expected `Quantity Metre`, found `Quantity Second`
+    fn Shown Fixed<<Second>>, q = Walked q
+                                         ^
+1 error

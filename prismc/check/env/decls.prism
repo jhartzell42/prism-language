@@ -1,0 +1,1073 @@
+# `Check.Env.Decls`, a child module of `Check.Env`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Reading.*
+use Check.Env.Traits.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+
+# ---------------------------------------------------------------------------------------
+# Third pass: declarations read as types
+# ---------------------------------------------------------------------------------------
+
+ConvertTypes: unbounded fn G, St, Text -> ((G, St))
+fn ConvertTypes g, st, m = match g.mods[m]:
+    nil: ((g, st))
+    ? info:
+        let s0 = update st:
+            &_.file <= info.file
+        Fold info.tree.decls, ((g, s0)), \|((gg, s)), d| ConvertTypeDecl gg, s, info, d
+
+ConvertDecls: unbounded fn G, St, Text -> ((G, St))
+fn ConvertDecls g, st, m = match g.mods[m]:
+    nil: ((g, st))
+    ? info:
+        let s1 = update st:
+            &_.file <= info.file
+        let ((g2, s2)) = Fold info.tree.decls, ((g, s1)), \|((gg, s)), d| ConvertDecl gg, s, info, d
+        let s3 = MissingSignatures g2, s2, info
+        ((g2, s3))
+
+# The aliases, before any other type is read: an alias is the type it names wherever it is
+# declared (Semantics ch. 6: a module's declarations stand in any order), so a field, a case
+# or another alias above it reads the type and never the alias's bare name. Each round reads
+# every alias with what the rounds before read, so a chain of n aliases is read in n rounds;
+# only the last round's diagnostics are kept. An alias that still names an alias then names
+# a ring of them and no type: `alias-cycle`.
+ConvertAliases: unbounded fn G, St -> ((G, St))
+fn ConvertAliases g, st:
+    let aliases = Fold (Values g.mods), [[]], \|acc, info| Fold info.tree.decls, acc, \|a, d| if IsAliasDecl d: Push a, ((info, d)) else: a
+    let quiet = Fold aliases, g, \|gg, ignore| Fold aliases, gg, \|g1, ((info, d))|
+        let ((g2, ignore)) = ConvertAlias g1, st, info, d
+        g2
+    let ((read, st2)) = Fold aliases, ((quiet, st)), \|((g1, s)), ((info, d))|
+        let ((g2, s2)) = ConvertAlias g1, (WithFile s, info.file), info, d
+        ((g2, (WithFile s2, st.file)))
+    Fold aliases, ((read, st2)), \|((g1, s)), ((info, d))| match d.kind:
+        DType t:
+            let name = QualKey info.name, (Dotted t.name.path)
+            let ti = Or read.types[name], dummyTyInfo
+            if ti.span != d.span or not (NamesAlias read, (AliasBody ti)): ((g1, s))
+            else:
+                let upd = update g1:
+                    &_.types <= Insert &_.types, name, (WithBody ti, (BAlias TyErr))
+                ((upd, (WithFile (ErrFix (WithFile s, info.file), "alias-cycle", d.span, "the alias `{Dotted t.name.path}` names a ring of aliases, and no type", "make one type of the ring a record, a choice or a newtype"), s.file)))
+        otherwise: ((g1, s))
+
+IsAliasDecl: fn Decl -> Bool
+fn IsAliasDecl d = match d.kind:
+    DType t: match t.?body:
+        ? body: match body:
+            TbAlias ignore: True
+            otherwise: False
+        nil: False
+    otherwise: False
+
+AliasBody: fn TyInfo -> Ty
+fn AliasBody ti = match ti.body:
+    BAlias t: t
+    otherwise: TyErr
+
+# One alias read as a type, with the aliases read so far expanded in it.
+ConvertAlias: unbounded fn G, St, ModInfo, Decl -> ((G, St))
+fn ConvertAlias g, st, info, d = match d.kind:
+    DType t:
+        let name = QualKey info.name, (Dotted t.name.path)
+        let ti = Or g.types[name], dummyTyInfo
+        # a second type of one name (`collision`, `CollectDecl`) is not read: the first stays
+        if ti.span != d.span: ((g, st))
+        else: match t.?body:
+            ? body: match body:
+                TbAlias a:
+                    let ((at, st2)) = ConvType (CxOf g, info.name), st, a
+                    let upd = update g:
+                        &_.types <= Insert &_.types, name, (WithBody ti, (BAlias at))
+                    ((upd, st2))
+                otherwise: ((g, st))
+            nil: ((g, st))
+    otherwise: ((g, st))
+
+# Whether a type names an alias still, which a type read after the aliases never does.
+NamesAlias: unbounded fn G, Ty -> Bool
+fn NamesAlias g, t = match t:
+    TyCon n, args: (IsAliasBody (Or g.types[n], dummyTyInfo).body) or (AnyNamesAlias g, args)
+    TyFn ignore, ps, r, prompts: (AnyNamesAlias g, ps) or (NamesAlias g, r)
+    TyTuple ts: AnyNamesAlias g, ts
+    TyArray e: NamesAlias g, e
+    TyMap k, v: (NamesAlias g, k) or (NamesAlias g, v)
+    TySig ignore, i: NamesAlias g, i
+    TyAt i, ignore: NamesAlias g, i
+    TyElem ignore, o: NamesAlias g, o
+    TyAssoc ignore, ignore, a, ignore2: NamesAlias g, a
+    otherwise: False
+
+AnyNamesAlias: unbounded fn G, [Ty] -> Bool
+fn AnyNamesAlias g, ts = Fold ts, False, \|seen, t| seen or NamesAlias g, t
+
+IsAliasBody: fn TyBody -> Bool
+fn IsAliasBody b = match b:
+    BAlias ignore: True
+    otherwise: False
+
+# A type's variables are its parameters (Type System ch. 2: "A record may take type
+# parameters, `type Pair a b = record:`"): the head names each once (`collision`), and a
+# field, a case or an alias names no other variable (`unknown-name`).
+TypeHeadVariables: unbounded fn St, TypeDecl -> St
+fn TypeHeadVariables st, t:
+    let params = Each t.params, \|p| p.name
+    let st1 = Fold (Range0 (Len t.params)), st, \|s, i|
+        match t.params[i]:
+            ? p: if HasText (Take params, i), p.name: Err s, "collision", p.span, "a second parameter `{p.name}`" else: s
+            nil: s
+    let written = match t.?body:
+        ? body: match body:
+            TbRecord fs: Each fs, \|f| f.ty
+            TbChoice cs: Fold cs, [[]], \|acc, c| Append acc, c.args
+            TbNewtype c: c.args
+            TbAlias a: [[a]]
+            otherwise: [[]]
+        nil: [[]]
+    # (a type's body is no signature: a `forall` there binds its own variables, `type
+    # Supplier d = forall o. ..`, so it is read as a `forall` inside a type is)
+    let ((st2, ignore)) = Fold written, ((st1, params)), \|((s, known)), ty| Fold (TypeVarsInto [[]], ty), ((s, known)), \|((s1, seen)), v|
+        if HasText seen, v: ((s1, seen))
+        else: (((ErrFix s1, "unknown-name", ty.span, "`{v}` is no parameter of `{Dotted t.name.path}`", "declare it in the head, `type {Join (Append [[Dotted t.name.path]], (Push params, v)), " "} = ...`"), (Push seen, v)))
+    st2
+
+# A parameter's stated kind is a choice whose variants carry nothing (Jimmy's ruling PK).
+DeclaredKinds: unbounded fn Cx, St, [((Text, Type))] -> St
+fn DeclaredKinds cx, st, kinds = Fold kinds, st, \|s, ((ignore, k))| match k.kind:
+    TName n, ignore3 if IsAssocName cx, n.path: s
+    TName n, [[]]: match ResolveType cx.g, cx.home, n.path:
+        ((? kindKey, ignore2)): if Fold (Values cx.g.caseOwners), False, \|seen, o| seen or o == kindKey: s else:
+            match ?PayloadCaseOf cx.g, kindKey:
+                ? c: ErrFix s, "kind", k.span, "`{Dotted n.path}` is no kind: its variant `{c}` carries a payload", "index by a choice whose variants carry nothing"
+                nil: ErrFix s, "kind", k.span, "`{Dotted n.path}` is no kind: a kind is a choice whose variants carry nothing", "index by a choice whose variants carry nothing"
+        otherwise: Err s, "unknown-name", k.span, "no type `{Dotted n.path}` to be a kind"
+    otherwise: Err s, "kind", k.span, "a kind is a choice whose variants carry nothing"
+
+# A choice's first case that carries a payload, read from its declaration.
+?PayloadCaseOf: fn G, Text -> ?Text
+fn ?PayloadCaseOf g, kindKey = match g.types[kindKey]:
+    ? ti: match g.mods[ti.home]:
+        ? info: Fold info.tree.decls, nil, \|?found, d| if ?found != nil: ?found else: match d.kind:
+            DType t: if (QualKey info.name, (Dotted t.name.path)) != kindKey: nil else: match t.?body:
+                ? (TbChoice cs): match (Filter cs, \|c| (Len c.args) > 0)[0]:
+                    ? c: ? (SNameKey c.name)
+                    nil: nil
+                otherwise: nil
+            otherwise: nil
+        nil: nil
+    nil: nil
+
+ConvertTypeDecl: unbounded fn G, St, ModInfo, Decl -> ((G, St))
+fn ConvertTypeDecl g, st0, info, d = match d.kind:
+    DType t:
+        let name = QualKey info.name, (Dotted t.name.path)
+        let ti = Or g.types[name], dummyTyInfo
+        let cx = CxOf g, info.name
+        let st = if ti.span == d.span: DeclaredKinds cx, (TypeHeadVariables st0, t), t.kinds else: st0
+        let params = Each t.params, \|p| p.name
+        let self = TyCon name, (Each params, \|p| TyQ p)
+        # a second type of one name (`collision`, `CollectDecl`) is not read: the first stays
+        if ti.span != d.span: ((g, st))
+        else: match t.?body:
+                nil: ((g, st))
+                ? body: match body:
+                    TbRecord fs:
+                        let ((fields, st2a)) = Fold fs, (([[]], st)), \|((acc, s)), f|
+                            let ((ft, s2)) = ConvType cx, (SigilsOnName (SecondField s, acc, f), (Or g.srcs[info.file], (MkSrc "?", "")), f), f.ty
+                            let ((fieldRow, s3)) = if Contains f.sigils, "@": FieldRow cx, s2, f.ty else: ((cx.scope, s2))
+                            (((Push acc, ((f.name.name, (FieldSigils f.sigils, ft, fieldRow)))), (FieldRowBound s3, info, (Dotted t.name.path), f)))
+                        let st2 = SecondConstructor g, st2a, name, name, d.span
+                        let ctor = CtorInfo(name=name, owner=name, params=params, args=(Each fields, \|((ignore, ft))| ft), fields=(Each fields, \|((fname, ignore))| fname), ty=self, index=0)
+                        let upd = update g:
+                            &_.types <= Insert &_.types, name, (WithBody ti, (BRecord fields))
+                            &_.ctors <= Insert &_.ctors, name, ctor
+                        ((upd, st2))
+                    TbChoice cs: ConvCases g, (CaseRowsBound st, info, (Dotted t.name.path), cs), cx, ti, name, params, self, cs
+                    TbNewtype c: ConvCases g, (CaseRowsBound st, info, (Dotted t.name.path), [[c]]), cx, ti, name, params, self, [[c]]
+                    TbUnit i:
+                        let stUnit = SecondConstructor g, st, (QualKey info.name, i.name), name, i.span
+                        let ctor = CtorInfo(name=(QualKey info.name, i.name), owner=name, params=params, args=[[]], fields=[[]], ty=self, index=0)
+                        let upd = update g:
+                            &_.types <= Insert &_.types, name, (WithBody ti, (BChoice [[((i.name, [[]]))]]))
+                            &_.ctors <= Insert &_.ctors, (QualKey info.name, i.name), ctor
+                        ((upd, stUnit))
+                    TbRow:
+                        let upd = update g:
+                            &_.types <= Insert &_.types, name, (WithBody ti, BRowKind)
+                        ((upd, st))
+                    # read before every other type (`ConvertAliases`)
+                    TbAlias ignore: ((g, st))
+    otherwise: ((g, st0))
+
+# Whether a definition is the module-level `let` of this key.
+IsLetOf: fn Def, Text -> Bool
+fn IsLetOf d, qk = match d.body:
+    DbLet ignore: d.qk == qk
+    otherwise: False
+
+IsWidgetOf: fn Def, Text -> Bool
+fn IsWidgetOf d, qk = match d.body:
+    DbWidget ignore: d.qk == qk
+    otherwise: False
+
+# `collision`: a second field of one name in a record or a tag. The first stays the field.
+SecondField: fn St, [((Text, Ty))], Field -> St
+fn SecondField st, fields, f = if Fold fields, False, \|seen, ((fname, ignore))| seen or fname == f.name.name: Err st, "collision", f.span, "a second field `{f.name.name}`" else: st
+
+# `collision`: a constructor's name is a value-level name of its module, so a choice names
+# it once and no second type of the module names it (a record is its own constructor).
+SecondConstructor: fn G, St, Text, Text, Range -> St
+fn SecondConstructor g, st, qk, owner, span = match g.ctors[qk]:
+    ? other: Err st, "collision", span, "a second constructor `{BareName qk}`{if other.owner == owner: "" else: ": `{BareName other.owner}` has one"}"
+    nil: st
+
+WithBody: fn TyInfo, TyBody -> TyInfo
+fn WithBody ti, b = update ti:
+    &_.body <= b
+
+ConvCases: unbounded fn G, St, Cx, TyInfo, Text, [Text], Ty, [Case] -> ((G, St))
+fn ConvCases g, st, cx, ti, name, params, self, cs:
+    let ((cases, st2)) = Fold cs, (([[]], st)), \|((acc, s)), c|
+        let s1 = match c.?indexed:
+            ? ignore: Err s, "unsupported", c.span, "this checker does not implement indexed choices for user types"
+            nil: s
+        let ((args, s2)) = ConvTypes cx, s1, c.args
+        (((Push acc, ((SNameKey c.name, args))), s2))
+    let ((g2, st3)) = Fold (Range0 (Len cases)), ((g, st2)), \|((gg, s)), i|
+        let ((cn, args)) = Or cases[i], (("", [[]]))
+        let qk = QualKey ti.home, cn
+        let s2 = SecondConstructor gg, s, qk, name, (Or cs[i], dummyCase).span
+        let upd = update gg:
+            &_.ctors <= Insert &_.ctors, qk, CtorInfo(name=qk, owner=name, params=params, args=args, fields=[[]], ty=self, index=i)
+        ((upd, s2))
+    let upd = update g2:
+        &_.types <= Insert &_.types, name, (WithBody ti, (BChoice cases))
+    ((upd, st3))
+
+let dummyCase = Case(name=SName(sigils="", path=[[]], span=Range(start=0, end=0, origin=InSource)), args=[[]], ?indexed=nil, span=Range(start=0, end=0, origin=InSource))
+
+# The variables a signature's `forall` names (Jimmy's ruling FA).
+ForallNames: fn Type -> [Text]
+fn ForallNames t = match t.kind:
+    TForall vs, ignore, ignore2: Each vs, \|v| v.name
+    otherwise: [[]]
+
+# The kinds a signature's `forall` states, each a choice's key.
+ForallKinds: fn G, Text, Type -> [((Text, Text))]
+fn ForallKinds g, m, t = match t.kind:
+    TForall ignore, kinds, ignore2: Fold kinds, [[]], \|acc, ((v, k))| match k.kind:
+        TName n, [[]]: match ResolveType g, m, n.path:
+            ((? found, ignore)): Push acc, ((v, found))
+            otherwise: acc
+        # a kind an associated type gives at a named type (`s: Side Box`): kept as the
+        # associated type and the type, and found through the impl where it is read
+        # (`?KindOfAssoc`)
+        TName n, [[arg]]: match arg.kind:
+            TName a, [[]]: match ResolveType g, m, a.path:
+                ((? found, ignore)): Push acc, ((v, (AssocKindKey (BareName (Dotted n.path)), found)))
+                # at a variable (`r: Role d`), kept by the variable's name: an impl's
+                # method reads it at the impl's head (`KindAtParameter`)
+                otherwise: if (Len a.path) == 1 and not (IsUpperText (Dotted a.path)): Push acc, ((v, (AssocKindKey (BareName (Dotted n.path)), "@{Dotted a.path}"))) else: acc
+            otherwise: acc
+        otherwise: acc
+    otherwise: [[]]
+
+# The scoped-kind key of an associated type's kind at a named type (`ForallKinds`).
+AssocKindKey: fn Text, Text -> Text
+fn AssocKindKey assoc, head = "assoc\u{0}{assoc}\u{0}{head}"
+
+ConvertDecl: unbounded fn G, St, ModInfo, Decl -> ((G, St))
+fn ConvertDecl g, st, info, d = match d.kind:
+    DSignature s:
+        let qk = QualKey info.name, (DefNameText s.name)
+        let cx = CxOf g, info.name
+        # a named lens is typed as a function from the whole to the part its result names
+        # ("a reference is typed as the part it names"); one whose signature is refused
+        # has no type, and its body is not read (`CheckLens`)
+        let lens = IsLensText (DefNameText s.name)
+        let ((sc0, st1a)) = SigScheme cx, st, (if lens: LensPlain s.ty else: s.ty), s.bounds
+        let st1 = BoundsNamed st1a, s.bounds, (TypeVarsOfType s.ty), "the signature", "the signature"
+        let st2 = if lens: LensCheck st1, (Or g.srcs[info.file], (MkSrc "?", "")), (DefNameText s.name), s.ty, (DefNameSpan s.name) else: st1
+        let sc = if (Len st2.diags) == (Len st1.diags): sc0
+            else: update sc0:
+                &_.ty <= TyErr
+        let st3 = CheckMarkFunction st2, (if lens: DropPrefix (DefNameText s.name), "&" else: DefNameText s.name), sc.ty, (DefNameSpan s.name)
+        if HasKey g.vals, qk: ((g, (Err st3, "collision", d.span, "a second signature for `{DefNameText s.name}`")))
+        # a constructor's name is a value-level name of its module
+        else: match g.ctors[qk]:
+            ? constructor: ((g, (Err st3, "collision", d.span, "`{DefNameText s.name}` is a constructor of `{BareName constructor.owner}` in this module")))
+            nil:
+                let upd = update g:
+                    &_.vals <= Insert &_.vals, qk, ValInfo(qk=qk, ?runtime=s.?runtime, scheme=sc, sort="fn", hasSig=True, scoped=(ForallNames s.ty), scopedKinds=(ForallKinds g, info.name, s.ty), home=info.name, file=info.file, span=d.span)
+                ((upd, st3))
+    DFn f:
+        let qk = QualKey info.name, (DefNameText f.name)
+        (((AddClause g, info, qk, (DefNameText f.name), f, d.span, st), st))
+    DLet l:
+        let names = PatternNames l.pattern
+        let qk = QualKey info.name, (Or names[0], "")
+        let def = Def(qk=qk, name=(Or names[0], ""), home=info.name, file=info.file, span=d.span, body=(DbLet l))
+        # `collision`: a module's `let` binds its name once; the first stays
+        if Fold g.defs, False, \|seen, other| seen or (IsLetOf other, qk): ((g, (Err st, "collision", d.span, "a second `let` for `{Or names[0], ""}`")))
+        else:
+            let upd = update g:
+                &_.defs <= Push &_.defs, def
+            ((upd, st))
+    DWidget w:
+        let qk = QualKey info.name, (SNameKey w.name)
+        let def = Def(qk=qk, name=(SNameKey w.name), home=info.name, file=info.file, span=d.span, body=(DbWidget w))
+        let upd = update g:
+            &_.defs <= Push &_.defs, def
+        # `collision`: a widget's block takes no arguments, so a second block of its name
+        # defines the name twice, as a second `fn @Name:` does (Jimmy's ruling ZD)
+        if Fold g.defs, False, \|seen, other| seen or (IsWidgetOf other, qk): ((upd, (Err st, "collision", d.span, "`{SNameKey w.name}` is defined twice")))
+        else: ((upd, st))
+    DTag t: ConvTag g, st, info, t, d.span
+    DDeriveVia v: ((g, (Err st, "unknown-name", d.span, "no `derive ^{Dotted v.traitRef.path} a via ^{Dotted v.through.path} a:` writes this derivation")))
+    DTrait t: ConvTrait g, st, info, t, d.span
+    DImpl i: ConvImpl g, st, info, i, d.span
+    DCheck c:
+        let upd = update g:
+            &_.defs <= Push &_.defs, Def(qk=(QualKey info.name, "check {c.name.name}"), name=c.name.name, home=info.name, file=info.file, span=d.span, body=(DbCheck c))
+        ((upd, st))
+    DTest t:
+        let upd = update g:
+            &_.defs <= Push &_.defs, Def(qk=(QualKey info.name, "test {t.name.name}"), name=t.name.name, home=info.name, file=info.file, span=d.span, body=(DbTest t))
+        ((upd, st))
+    DStmt s: match s.kind:
+        SEmit ignore: ((g, st))
+        otherwise: ((g, (Err st, "unsupported", d.span, "a statement at the top of a file: nothing at top level is built")))
+    otherwise: ((g, st))
+
+# Clauses of one function gather into one definition, in order.
+AddClause: fn G, ModInfo, Text, Text, FnClause, Range, St -> G
+fn AddClause g, info, qk, name, f, span, st:
+    match g.fnAt[qk]:
+        ? i: update g:
+            &_.defs <= Insert2 &_.defs, i, (AddToFn (Or &_.defs[i], dummyDef), f)
+        nil: update g:
+            &_.fnAt <= Insert &_.fnAt, qk, (Len &_.defs)
+            &_.defs <= Push &_.defs, Def(qk=qk, name=name, home=info.name, file=info.file, span=span, body=(DbFn [[f]]))
+
+let dummyDef = Def(qk="", name="", home="", file=0, span=Range(start=0, end=0, origin=InSource), body=(DbFn [[]]))
+
+IsFnDef: fn Def -> Bool
+fn IsFnDef d = match d.body:
+    DbFn ignore: True
+    otherwise: False
+
+AddToFn: fn Def, FnClause -> Def
+fn AddToFn d, f = match d.body:
+    DbFn fs: update d:
+        &_.body <= DbFn (Push fs, f)
+    otherwise: d
+
+# An array with element `i` replaced.
+Insert2: fn [a], Nat, a -> [a]
+fn Insert2 xs, i, x = Append (Push (Take xs, i), x), (Drop xs, i + 1)
+
+# A named lens, `&Home: fn &Fixture -> &Nat` (Semantics ch. 5, "References and lens
+# paths"; Type System ch. 3, "Lenses"): "a function from one reference to a reference,
+# named with `&`". It takes exactly one `&` parameter (`lens-arity`: "Rust's lifetime
+# elision rule for a function with one reference parameter") and nothing else (appendix
+# A.6: `"&" uname ref` has no place for a second argument), and its result is a reference
+# (`lens-result`). A map's entry, `Entry K V`, stands where a reference does, taken or
+# given back (Jimmy's ruling on map entries).
+LensCheck: fn St, Src, Text, Type, Range -> St
+fn LensCheck st, src, name, t, span = match t.kind:
+    TFn ignore, ps, res, prompts:
+        let refs = Filter ps, \|p| (IsRefType p) or IsEntryType p
+        if (Len refs) > 1: ErrFix st, "lens-arity", span, "a lens takes one reference", "take the second part as a plain value"
+        else: if (Len refs) == 0:
+            let fix = match ps[0]:
+                ? p: "write its parameter as a reference, `&{SpanText src, p.span}`"
+                nil: "give it one parameter, a reference"
+            ErrFix st, "lens-arity", span, "a lens takes one reference, and `{name}` takes none", fix
+        else: if (Len ps) > 1: ErrFix st, "lens-arity", span, "a lens takes one reference and nothing else, and `{name}` takes {Len ps} parameters", "write a lens for each part, or the path in the `update` block"
+        else: if not ((IsRefType res) or IsEntryType res): ErrFix st, "lens-result", span, "a lens gives back a reference, and `{name}` gives back `{SpanText src, res.span}`", "write the result as `&{SpanText src, res.span}`"
+        else: st
+    otherwise: ErrFix st, "lens-result", span, "a name with `&` is a lens, a function from one reference to a reference", "write `{name}: fn &Whole -> &Part`, or name it without `&`"
+
+# `Entry K V` as written (Jimmy's ruling on map entries): a lens may take or give back one.
+IsEntryType: fn Type -> Bool
+fn IsEntryType t = match t.kind:
+    TName n, ignore: n.sigils == "" and (n.path == [["Entry"]] or n.path == [["Prelude", "Entry"]])
+    otherwise: False
+
+IsRefType: fn Type -> Bool
+fn IsRefType t = match t.kind:
+    TName n, ignore: (HasPrefix n.sigils, "&")
+    TSigiled s, ignore: (HasPrefix s, "&")
+    otherwise: False
+
+# A named lens's name: `&`, then an uppercase name under whatever marks its part shows
+# (`&Acc`, `&?Second`; `Board.&Acc` as a definition's key).
+IsLensText: fn Text -> Bool
+fn IsLensText name:
+    let bare = BareName name
+    (HasPrefix bare, "&") and IsUpperText (DropPrefix bare, (MarksOf bare))
+
+# A lens's signature as the function from the whole to the part it is typed as: the `&`
+# off its parameters and its result.
+LensPlain: fn Type -> Type
+fn LensPlain t = match t.kind:
+    TFn color, ps, res, prompts: Type(kind=(TFn color, (Each ps, WithoutRef), (WithoutRef res), prompts), span=t.span)
+    otherwise: t
+
+WithoutRef: fn Type -> Type
+fn WithoutRef t = match t.kind:
+    TName n, args:
+        if (HasPrefix n.sigils, "&"): Type(kind=(TName SName(sigils=(DropPrefix n.sigils, "&"), path=n.path, span=n.span), args), span=t.span)
+        else: t
+    TSigiled s, inner:
+        if s == "&": inner
+        else: if (HasPrefix s, "&"): Type(kind=(TSigiled (DropPrefix s, "&"), inner), span=t.span)
+        else: t
+    otherwise: t
+
+# `mark-function` (ch. 5, the full-stack name check): a function's name shows the
+# outermost mark of what it returns.
+CheckMarkFunction: unbounded fn St, Text, Ty, Range -> St
+fn CheckMarkFunction st, name, t, span = match t:
+    TyFn ignore, ignore, res, prompts:
+        let want = HeadSigil st, res
+        let marks = MarksOf name
+        let shown = Head marks
+        let bare = DropPrefix name, marks
+        if shown == want or (Len marks) > 1 or bare == "" or not (IsUpperText bare): st
+        else: ErrFix st, "mark-function", span, "`{name}` returns `{ShowTy st, res}`; name it `{want}{bare}`", "rename to `{want}{bare}`"
+    otherwise: st
+
+# `field-sigils`: a field's sigils stand on its name, its type written without them
+# (`$label: Text`, never `label: $Text`), as a binder's do.
+SigilsOnName: fn St, Src, Field -> St
+fn SigilsOnName st, src, f:
+    let sigils = TypeSigils f.ty
+    # `reference-stored`: "No reference is stored, returned or captured" (Semantics ch. 5,
+    # "The borrow rule"), so no field is one
+    if (HasPrefix f.sigils, "&") or (HasPrefix sigils, "&"): ErrFix st, "reference-stored", f.span, "the field `{f.sigils}{f.name.name}` would store a reference, and no reference outlives its `update` block", "store the value, `{DropPrefix f.sigils, "&"}{f.name.name}: {DropPrefix (SpanText src, f.ty.span), "&"}`"
+    else: if sigils == "": st
+    else: ErrFix st, "field-sigils", f.span, "the field `{f.sigils}{f.name.name}` writes `{sigils}` on its type; a field's sigils stand on its name", "write `{f.sigils}{sigils}{f.name.name}: ` and the type without them"
+
+# The sigils written outermost on a type (`$` of `$Text`, `$?` of `$?Rect`).
+TypeSigils: fn Type -> Text
+fn TypeSigils t = match t.kind:
+    TName n, ignore: n.sigils
+    TSigiled s, ignore: s
+    TUnit m: m
+    TGroup inner: TypeSigils inner
+    otherwise: ""
+
+# A field's type: the sigils on its name over its written type (`$label: Text` is a
+# `$Text` field), as a binder's sigils state its type's layers.
+# A field's blueprint, `@body: unit`, emits the row its type writes with `emit`, or the row
+# of the scope it is written in, as a signature's does (Type System ch. 2, "Rows in `emit`
+# and in signatures").
+FieldSigils: fn Text, Ty, Rw -> Ty
+fn FieldSigils sigils, t, emitted = WithMarks sigils, t, emitted
+
+# A record's field that emits the scope's row, in a module whose row is a variable: the
+# module's `emit r` is a variable of each signature (Type System ch. 2, "Rows in `emit`
+# and in signatures"), and a record is no signature, so nothing would bind the field's
+# row. The field writes its own.
+FieldRowBound: unbounded fn St, ModInfo, Text, Field -> St
+fn FieldRowBound st, info, owner, f:
+    let takesScope = ((Contains f.sigils, "@") and not (WritesEmit f.ty)) or UsesScope f.ty
+    if info.rowVar == "" or not takesScope: st
+    else: ErrFix st, "unknown-name", f.span, "the field `{f.sigils}{f.name.name}` of `{owner}` emits the module's row `{info.rowVar}`, and a record has no row of its own", "write the row on the field's type, as `emit Ui.*`"
+
+# A choice's case that holds a blueprint emitting the scope's row, in a module whose row
+# is a variable: a choice is no signature either, so the case writes its own row, as a
+# record's field does (`FieldRowBound`).
+CaseRowsBound: unbounded fn St, ModInfo, Text, [Case] -> St
+fn CaseRowsBound st, info, owner, cs = if info.rowVar == "": st else: Fold cs, st, \|s, c|
+    if Fold c.args, False, \|seen, a| seen or UsesScope a: ErrFix s, "unknown-name", c.span, "the variant `{SNameKey c.name}` of `{owner}` emits the module's row `{info.rowVar}`, and a choice has no row of its own", "write the row on the variant's type, as `emit Ui.*`"
+    else: s
+
+# Whether a field's type writes its row with `emit`.
+WritesEmit: unbounded fn Type -> Bool
+fn WritesEmit t = match t.kind:
+    TEmit ignore, ignore: True
+    TGroup inner: WritesEmit inner
+    otherwise: False
+
+# The row a field's blueprint emits: its type's own `emit`, or the scope's.
+FieldRow: unbounded fn Cx, St, Type -> ((Rw, St))
+fn FieldRow cx, st, t = match t.kind:
+    TEmit ignore, rowType: ConvRow cx, st, rowType
+    TGroup inner: FieldRow cx, st, inner
+    otherwise: ((cx.scope, st))
+
+MissingSignatures: fn G, St, ModInfo -> St
+fn MissingSignatures g, st, info = Fold g.defs, st, \|s, d|
+    if d.home == info.name and (IsFnDef d) and not (HasKey g.vals, d.qk):
+        ErrFix s, "no-signature", d.span, "`{d.name}` has no signature line", "write `{d.name}: fn ... -> ...` above it"
+    else: s
+
+# `no-definition`: a signature line of a program's own file with no definition under it.
+MissingDefinitions: unbounded fn G, St -> St
+fn MissingDefinitions g, st0:
+    let defined = Fold g.defs, {{}}, \|m, x| Insert m, x.qk, True
+    # the prelude module's signature lines with no clauses are its builtins, which each back
+    # end supplies (library/prelude.prism's header), wherever it is read from
+    # and so are a standard library's, checked as a program of its own (it declares its own
+    # `module Prelude`): `Documents`' path primitives (Jimmy, 14 November: "path
+    # manipulators can stay primitive")
+    let standardLibrary = match g.mods["Prelude"]:
+        ? p: p.file < g.preludeFrom
+        nil: False
+    let st = Fold (Values g.mods), st0, \|s0, info| if info.file >= g.preludeFrom or info.name == "Prelude" or standardLibrary: s0 else:
+        let s1 = update s0:
+            &_.file <= info.file
+        Fold info.tree.decls, s1, \|s, d| match d.kind:
+            # (a signature that names its runtime function is defined there, in any module:
+            # ruling RT, Jimmy 16 November, "yes it's allowed")
+            DSignature sg:
+                if (HasKey defined, (QualKey info.name, (DefNameText sg.name))) or (sg.?runtime != nil): s
+                else: ErrFix s, "no-definition", d.span, "`{DefNameText sg.name}` has a signature line and no definition", "define it under its signature, `fn {DefNameText sg.name} ... = ...`, or delete the line"
+            otherwise: s
+    update st:
+        &_.file <= st0.file
+
+# A trait's default for an associated type (`type Item = a` under the trait; Jimmy's ruling
+# AD): an impl that does not state the type takes the default, the trait's parameter read
+# as the impl's head, so `Item Crate` is `Crate`. The impl then holds the choice as if it
+# were written, which is what the associated type's uses and both back ends read.
+ImplDefaults: unbounded fn G, St -> ((G, St))
+fn ImplDefaults g0, st0:
+    let ((g, st)) = ImplRowDefaults g0, st0
+    Fold (Values g.traits), ((g, st)), \|((g1, st1)), tr| ImplTypeDefaults g1, st1, tr
+
+ImplTypeDefaults: unbounded fn G, St, TraitInfo -> ((G, St))
+fn ImplTypeDefaults g1, st1, tr:
+    if (Len tr.assocDefaults) == 0: ((g1, st1))
+    else:
+        let ((impls, added)) = Fold (Or g1.impls[tr.name], [[]]), (([[]], [[]])), \|((done, new)), im|
+            let taken = Fold tr.assocDefaults, [[]], \|acc, ((assoc, value))|
+                if im.derived or (Fold im.assocs, False, \|seen, ((chosen, ignore))| seen or chosen == assoc): acc
+                else: Push acc, ((assoc, (SubstQ Inst(tys={{tr.param: im.head}}, rows={{}}, cols={{}}), value)))
+            let filled = update im:
+                &_.assocs <= Append &_.assocs, taken
+            (((Push done, filled), (Append new, (Each taken, \|((an, at))| AssocImpl(cls=im.cls, name=an, head=im.head, qs=im.qs, indices=[[]], value=at)))))
+        let g2 = update g1:
+            &_.impls <= Insert &_.impls, tr.name, impls
+        let st2 = update st1:
+            &_.assocImpls <= Append &_.assocImpls, added
+        ((g2, st2))
+
+?ViaShown: fn ImplDecl -> ?Text
+fn ?ViaShown i = match i.?through:
+    ? v: ? (Dotted v.path)
+    nil: nil
+
+# `impl-lacks`: an impl of a program's own file gives each method its trait declares
+# without a default body and chooses each associated type its trait gives no default (Type
+# System ch. 3: "An impl gives each method its definition lines", "an associated type,
+# which each impl chooses"; `ImplDefaults` has filled in the defaults);
+# an associated type its trait does not declare is refused as a method is. The prelude
+# module's impls lean on the back ends' builtins, as its signature lines do.
+ImplsComplete: unbounded fn G, St -> St
+fn ImplsComplete g, st0:
+    let st = Fold (Values g.traits), st0, \|s0, tr| Fold (Or g.impls[tr.name], [[]]), s0, \|s1, im|
+        if im.derived or im.file >= g.preludeFrom or im.home == "Prelude": s1
+        else:
+            let shown = BareName tr.name
+            let s2 = update s1:
+                &_.file <= im.file
+            let s3 = Fold tr.methods, s2, \|s, method|
+                # (a default from a trait below counts, chosen or `ambiguous` there)
+                # (the written ones folded apart: a lambda's body runs to the line's end)
+                let written = Fold im.methods, False, \|seen, m| seen or (BareName method) == m or (DropPrefix method, "{tr.home}.") == m
+                let defined = written or (HasAboveChosen im, (BareName method)) or BelowGivesDefault g, tr, im, (BareName method)
+                if defined or HasText tr.defaults, method: s
+                else: match im.?through:
+                    ? through: Err s, "mismatch", im.span, "`derive ^{shown} via ^{through}` gives no method `{BareName method}` of `^{shown}`"
+                    nil: ErrFix s, "impl-lacks", im.span, "this impl of `^{shown}` lacks `{BareName method}`, which has no default body", "define it under the impl, `fn {BareName method} ...`"
+            let s3r = Fold tr.assocRows, s3, \|s, rowName| if HasText im.rows, rowName: s else: ErrFix s, "impl-lacks", im.span, "this impl of `^{shown}` lacks `row {rowName}`", "choose it under the impl, `row {rowName} = ...`"
+            let s4 = Fold tr.assocs, s3r, \|s, assoc|
+                if HasKey tr.assocParams, assoc: EquationsComplete g, s, tr, im, assoc
+                else: if Fold im.assocs, False, \|seen, ((chosen, ignore))| seen or chosen == assoc: s
+                else: ErrFix s, "impl-lacks", im.span, "this impl of `^{shown}` lacks `type {assoc}`", "choose it under the impl, `type {assoc} = ...`"
+            let s5a = Fold im.assocs, s4, \|s, ((chosen, ignore))| if not (HasText tr.assocs, chosen): Err s, "mismatch", im.span, "`^{shown}` has no associated type `{chosen}`"
+                else: match tr.assocParams[chosen]:
+                    ? k: ErrFix s, "kind", im.span, "`type {chosen}` of `^{shown}` takes {if k == 1: "an index" else: "{CountWord k} indices"}; this impl gives it none", "write one equation per role, `type {chosen} Role = ...`, or one for every role, `type {chosen} r = ...`"
+                    nil: s
+            let s5 = Fold im.indexed, s5a, \|s, e| if not (HasText tr.assocs, e.name): Err s, "mismatch", im.span, "`^{shown}` has no associated type `{e.name}`"
+                else: if (Or tr.assocParams[e.name], 0) != (Len e.indices): ErrFix s, "kind", im.span, "`type {e.name}` of `^{shown}` takes {CountWord (Or tr.assocParams[e.name], 0)} indices; an equation of this impl gives it {CountWord (Len e.indices)}", "give it as many as the trait's `type {e.name}` names"
+                else: s
+            # each equality a derive asks of the type holds once its associated types are read
+            let s5e = Fold im.equalities, s5, \|s, ((l, r, at))|
+                let ln = NormAssoc s, l
+                let rn = NormAssoc s, r
+                if ln == rn: s else: Err s, "mismatch", at, "`derive ^{shown} via ^{Or im.?through, ""}` asks `{ShowTy s, l}` to be `{ShowTy s, r}`; here they are `{ShowTy s, ln}` and `{ShowTy s, rn}`"
+            let s6 = Fold tr.supers, s5e, \|s, above| ImplHasAbove g, s, im, shown, above
+            Fold tr.headBounds, s6, \|s, ((h, above))| ImplHasHeadBound g, s, im, tr.param, shown, h, above
+    update st:
+        &_.file <= st0.file
+
+# `assoc-role-missing`: an impl's equations for an associated type with indices cover every
+# role (Type System ch. 6, "The equations are closed and exhaustive"; doubt EQ): one
+# equation whose indices are all variables, or one per constructor of the roles' choice at
+# the one index that names constructors. An equation of all variables beside others
+# overlaps them, a `collision`.
+EquationsComplete: unbounded fn G, St, TraitInfo, ImplInfo, Text -> St
+fn EquationsComplete g, st, tr, im, assoc:
+    let eqs = Filter im.indexed, \|e| e.name == assoc
+    let general = Filter eqs, \|e| Fold e.indices, True, \|all, x| all and IsIndexVar x
+    let shown = BareName tr.name
+    let head = ShowTy st, im.head
+    if (Len eqs) == 0: ErrFix st, "impl-lacks", im.span, "this impl of `^{shown}` lacks `type {assoc}`", "give it an equation per role, `type {assoc} Role = ...`, or one for every role, `type {assoc} r = ...`"
+    else: if (Len general) > 0:
+        if (Len eqs) > 1: Err st, "collision", im.span, "`type {assoc}` has an equation for every role beside equations for single roles"
+        else: st
+    else:
+        let positions = Filter (Range0 (Or tr.assocParams[assoc], 0)), \|i| Fold eqs, False, \|b, e| b or not (IsIndexVar (Or e.indices[i], (IndexVar "")))
+        if (Len positions) > 1: Err st, "unsupported", im.span, "this checker does not implement equations of `type {assoc}` naming roles at more than one index"
+        else:
+            let at = Or positions[0], 0
+            let named = Fold eqs, [[]], \|ks, e| match e.indices[at]:
+                ? (IndexRole k): AddText ks, k
+                otherwise: ks
+            let owner = match g.ctors[Or named[0], ""]:
+                ? c: c.owner
+                nil: ""
+            let roles = Filter (Keys g.ctors), \|k| match g.ctors[k]:
+                ? c: c.owner == owner
+                nil: False
+            let st2 = Fold named, st, \|s, k| if HasText roles, k: s else: Err s, "mismatch", im.span, "`type {assoc}` names the roles of two choices, `{BareName (Or named[0], "")}` and `{BareName k}`"
+            let kindName = BareName owner
+            let var = Lower (Take1 kindName)
+            Fold roles, st2, \|s, k| if HasText named, k: s
+                else: ErrFix s, "assoc-variant-missing", im.span, "the impl of `^{shown}` for `{head}` gives `{assoc}` no equation for the variant `{BareName k}` of `{kindName}`", "add `type {assoc} {BareName k} = ...`, or `type {assoc} {var} = ...` for every variant"
+
+# An equation's indices as a message names them: its one case, or all of them.
+IndicesShown: fn [AssocIndex] -> Text
+fn IndicesShown xs = match Filter xs, \|x| not (IsIndexVar x):
+    [[IndexRole k]]: "the variant `{BareName k}`"
+    otherwise: "these indices"
+
+# The line of an impl's first equation for an associated type at these parameters.
+FirstEquationLine: fn G, ModInfo, ImplDecl, Text, [Ident] -> Nat
+fn FirstEquationLine g, info, i, name, params:
+    let spans = Fold i.items, [[]], \|acc, it| match it:
+        TiAssocType n, ps, ignore, ignore, at, ignoreAq if n.name == name and (Each ps, \|p| p.name) == (Each params, \|p| p.name): Push acc, at
+        otherwise: acc
+    let src = Or g.srcs[info.file], (MkSrc "", "")
+    let at = Or spans[0], Range(start=0, end=0, origin=InSource)
+    let seg = SegAt src, at.start
+    (Or ((CLineOf src.starts, at.start) -? seg.line), 0) + 1
+
+# A text's first character.
+Take1: fn Text -> Text
+fn Take1 t = Between t, 0, 1
+
+IsIndexVar: fn AssocIndex -> Bool
+fn IsIndexVar x = match x:
+    IndexVar ignore: True
+    IndexRole ignore: False
+
+# A trait's `where` on its parameter (`trait ^Titled a where a: ^Named`, Type System ch. 3)
+# asks every type of the trait for the impl above too: an impl's head has it, under the
+# impl's own bounds, or the impl is `no-impl`.
+ImplHasAbove: unbounded fn G, St, ImplInfo, Text, Text -> St
+fn ImplHasAbove g, st, im, shown, above = if im.head == TyErr: st else:
+    let head = SubstQ (ParamInst im.qs, (Each im.qs, \|q| TyRigid q)), im.head
+    let trial = update st:
+        &_.diags <= [[]]
+        &_.wants <= [[Want(cls=above, ty=head, file=im.file, span=im.span, level=0, reason=Asked)]]
+    let out = SolveWants g, trial, im.bounds, False
+    if (Len out.diags) == 0 and (Len out.wants) == 0: st
+    else: ErrFix st, "no-impl", im.span, "no impl of `^{BareName above}` for `{ShowTy st, im.head}`, which `^{shown}` asks of its types", "add `impl ^{BareName above} {ShowTyIn st, im.head, True}`"
+
+# A trait's `where` on a type of its parameter (`State d: ^SerializableValue`) asks every
+# impl for that type's impl, the type read at the impl's head.
+ImplHasHeadBound: unbounded fn G, St, ImplInfo, Text, Text, Ty, Text -> St
+fn ImplHasHeadBound g, st, im, param, shown, h, above = if im.head == TyErr: st else:
+    let head = SubstQ (ParamInst im.qs, (Each im.qs, \|q| TyRigid q)), im.head
+    let asked0 = SubstQ (ParamInst [[param]], [[head]]), h
+    match asked0:
+        # at every case: each equation of the impl's (`type Request Watcher = Wish`)
+        TyAssoc tr, n, a, indices if Fold indices, False, \|seen, x| seen or x == TyEvery:
+            Fold st.assocImpls, st, \|s, e| if e.cls != tr or e.name != n or (?MatchHead e.head, a, {{}}) == nil: s else: ImplHasHeadBoundAt g, s, im, shown, (TyAssoc tr, n, a, (Each e.indices, \|x| IndexAsType x)), above
+        otherwise: ImplHasHeadBoundAt g, st, im, shown, asked0, above
+
+# An equation's index as a type: its case, or its variable rigid.
+IndexAsType: fn AssocIndex -> Ty
+fn IndexAsType (IndexRole k) = TyRole k
+fn IndexAsType (IndexVar v) = TyRigid v
+
+ImplHasHeadBoundAt: unbounded fn G, St, ImplInfo, Text, Ty, Text -> St
+fn ImplHasHeadBoundAt g, st, im, shown, asked, above:
+    let trial = update st:
+        &_.diags <= [[]]
+        &_.wants <= [[Want(cls=above, ty=(NormAssoc st, asked), file=im.file, span=im.span, level=0, reason=Asked)]]
+    let out = SolveWants g, trial, im.bounds, False
+    if (Len out.diags) == 0 and (Len out.wants) == 0: st
+    else:
+        let reduced = NormAssoc st, asked
+        ErrFix st, "no-impl", im.span, "`^{shown}` asks `{ShowTyIn st, asked, False}: ^{BareName above}`, and there is no impl of `^{BareName above}` for `{ShowTy st, reduced}`", "write `impl ^{BareName above} {ShowTyIn st, reduced, True}`"
+
+# A `where` bound names a variable of its signature or of its impl's head (`known`): nothing
+# decides any other (Type System ch. 5, `ambiguous`), so no use could choose its impl.
+BoundsNamed: fn St, [Bound], [Text], Text, Text -> St
+fn BoundsNamed st, bounds, known, place, short = Fold bounds, st, \|s, b|
+    if b.?head != nil or HasText known, b.var.name: s
+    else: ErrFix s, "ambiguous", b.span, "nothing decides `{b.var.name}` in `^{Join (Each b.traits, \|tr| Dotted tr.path), ", ^"} {b.var.name}`: {place} names no `{b.var.name}`", "bound a variable of {short}, or drop the bound"
+
+# A further clause of a trait's default body: the clauses of one method are one definition.
+AddDefaultClause: fn Def, Text, Text, FnClause -> Def
+fn AddDefaultClause d, qk, cls, f = match d.body:
+    DbDefault cs, c if d.qk == qk and c == cls: update d:
+        &_.body <= DbDefault (Push cs, f), c
+    otherwise: d
+
+# A tag (Semantics ch. 8's table): `of` a row kind, its output, its fields; a generic tag's
+# variables bounded on the line.
+ConvTag: unbounded fn G, St, ModInfo, TagDecl, Range -> ((G, St))
+fn ConvTag g, st, info, t, span:
+    let name = Dotted t.name.path
+    let familyName = Dotted (Take t.name.path, (Dec (Len t.name.path)))
+    let cx = CxOf g, info.name
+    let ((kind, out, st2)) = TagKind g, cx, st, t.ofType
+    let ((fields, st3)) = Fold t.fields, (([[]], st2)), \|((acc, s)), f|
+        let ((ft, s2)) = ConvType cx, (SigilsOnName (SecondField s, acc, f), (Or g.srcs[info.file], (MkSrc "?", "")), f), f.ty
+        let ((fieldRow, s3)) = if Contains f.sigils, "@": FieldRow cx, s2, f.ty else: ((cx.scope, s2))
+        (((Push acc, ((f.name.name, (FieldSigils f.sigils, ft, fieldRow)))), s3))
+    # a family's indices are every tag's variables (`family Seat d r`; ruling AF)
+    let ?fd = g.famDecls[familyName]
+    let famParams = match ?fd:
+        ? fd: Each fd.params, \|p| p.name
+        nil: [[]]
+    let qs = Fold t.fields, (UnionTexts famParams, (TypeVarsOfType t.ofType)), \|acc, f| UnionTexts acc, (TypeVarsOfType f.ty)
+    let famBounds = match ?fd:
+        ? fd: fd.bounds
+        nil: [[]]
+    let ((bs, st4a)) = ConvBounds cx, st3, (Append famBounds, t.bounds)
+    # `collision`: a tag is declared once; the first declaration stays the tag
+    let st4b = if HasKey g.tags, name: Err st4a, "collision", span, "a second tag `{name}`" else: st4a
+    # (a fault kind may declare fields: a fault holds typed values, ruling TF)
+    let st4 = st4b
+    # `field-variable`: a variable in a field appears in the tag's output (Type System
+    # ch. 2, "A variable in a field must appear in the index"), which is what decides it
+    # where the tag is matched
+    let indexed = UnionTexts famParams, (TypeVarsOfType t.ofType)
+    let outText = match t.ofType.kind:
+        TName ignore, [[o]]: SpanText (Or g.srcs[info.file], (MkSrc "?", "")), o.span
+        otherwise: "unit"
+    let st5 = Fold t.fields, st4, \|s, f| Fold (TypeVarPlaces [[]], f.ty), s, \|s2, ((v, at))|
+        if HasText indexed, v: s2
+        else: ErrFix s2, "field-variable", at, "the type variable `{v}` in the field `{f.name.name}` of `{name}` does not appear in the tag's output, `{outText}`", "put `{v}` in the output, or give the field a type without it"
+    let tg = TagInfo(name=name, familyName=familyName, kind=kind, out=out, qs=qs, rqs=(if info.rowVar == "": [[]] else: [[info.rowVar]]), bounds=bs, famParams=famParams, fields=fields, fieldAt=(Each t.fields, \|f| (("{f.sigils}{f.name.name}", f.span))), home=info.name, file=info.file, span=span)
+    let upd = update g:
+        if not (HasKey &_.tags, name):
+            &_.tags <= Insert &_.tags, name, tg
+    ((upd, st5))
+
+# The row kind a tag joins and its output: `Element !Click`, `Element` (unit), `Fault`.
+TagKind: unbounded fn G, Cx, St, Type -> ((Text, Ty, St))
+fn TagKind g, cx, st, t = match t.kind:
+    TName n, args:
+        let name = Dotted n.path
+        if name == "Element":
+            match args[0]:
+                ? o:
+                    let ((ot, s2)) = ConvType cx, st, o
+                    (("Element", ot, s2))
+                nil: (("Element", tUnit, st))
+        else:
+            let ((?key, ignore)) = ResolveType g, cx.home, n.path
+            match ?key:
+                ? k: match (Or g.types[k], dummyTyInfo).body:
+                    BRowKind: ((k, tUnit, st))
+                    otherwise: ((k, tUnit, (Err st, "kind", t.span, "`{name}` is not a row kind: a tag joins `Element o`, `Fault` or another `type K = row`")))
+                nil: (("", TyErr, (Err st, "unknown-name", t.span, "no row kind `{name}`")))
+    TGroup x: TagKind g, cx, st, x
+    otherwise: (("", TyErr, (Err st, "kind", t.span, "a tag joins a row kind")))
+
+# A trait: its parameter, superclasses, methods (each a value whose scheme has the trait
+# as a bound on the parameter), defaults and associated types (ch. 3).
+ConvTrait: unbounded fn G, St, ModInfo, TraitDecl, Range -> ((G, St))
+fn ConvTrait g, st, info, t, span:
+    let name = QualKey info.name, (Dotted t.name.path)
+    let param = Or (Each t.params, \|p| p.name)[0], "a"
+    let st1 = if (Len t.params) > 1: Err st, "unsupported", span, "this checker does not implement traits of several types" else: st
+    let cx = CxOf g, info.name
+    let ((supers, st2a)) = ConvBounds cx, st1, (Filter t.bounds, \|b| b.?head == nil)
+    let ((headBounds, st2)) = TraitHeadBounds cx, st2a, t.bounds
+    # a default for an associated type, `type Item = a`, read over the trait's parameter
+    let ((assocDefaults, st2d)) = Fold t.items, (([[]], st2)), \|((acc, s)), it| match it:
+        TiAssocType n, params, ignore, (? v), aspan, ignoreAq:
+            if (Len params) > 0: ((acc, (Err s, "unsupported", aspan, "this checker does not implement a default for an associated type with indices")))
+            else:
+                let ((vt, s2)) = ConvType cx, s, v
+                (((Push acc, ((n.name, vt))), s2))
+        # a trait's own further parameters are variables, `type Request r`
+        TiAssocType n, params, ignore, nil, aspan, ignoreAq: Fold params, ((acc, s)), \|((a2, s2)), p| if IsUpperText p.name: ((a2, (ErrFix s2, "syntax", p.span, "`{p.name}` stands where `type {n.name}` names its parameters, which are lowercase", "write a lowercase name, `type {n.name} r`; a role's own equation stands under an impl"))) else: ((a2, s2))
+        otherwise: ((acc, s))
+    let ((g3, st3, methods, defaults, assocs)) = Fold t.items, ((g, st2d, [[]], [[]], [[]])), \|((gg, s, ms, ds, assocAcc)), it| match it:
+        TiSignature sg:
+            let mname = DefNameText sg.name
+            let qk = QualKey info.name, mname
+            let ((sc, s2a)) = SigScheme cx, s, sg.ty, sg.bounds
+            # `collision`: a method is signed once
+            let s2 = if HasText ms, qk: Err s2a, "collision", sg.span, "a second signature for `{mname}`" else: s2a
+            let sc2 = update sc:
+                # the trait's parameter first: `Step<<d>>` under `forall (r: Role d)` gives
+                # `d`, then the method's own variables in their `forall` order
+                &_.qs <= Append [[param]], (Filter &_.qs, \|q| q != param)
+                &_.bounds <= Append [[((param, name))]], &_.bounds
+            let upd = update gg:
+                &_.vals <= Insert &_.vals, qk, ValInfo(qk=qk, ?runtime=nil, scheme=sc2, sort="method", hasSig=True, scoped=[[]], scopedKinds=(ForallKinds gg, info.name, sg.ty), home=info.name, file=info.file, span=sg.span)
+            ((upd, s2, (Push ms, qk), ds, assocAcc))
+        TiFn f:
+            # a default for a method the trait does not sign is one for a method of a
+            # trait above it (ruling SD), keyed apart from that method's own default
+            let own = Fold t.items, False, \|seen, other| seen or match other:
+                TiSignature osg: (DefNameText osg.name) == (DefNameText f.name)
+                otherwise: False
+            let qk = if own: QualKey info.name, (DefNameText f.name) else: AboveDefaultKey name, (DefNameText f.name)
+            # the clauses of one default are one definition, as a function's are
+            if HasText ds, qk:
+                let upd = update gg:
+                    &_.defs <= Each &_.defs, \|d| AddDefaultClause d, qk, name, f
+                ((upd, s, ms, ds, assocAcc))
+            else:
+                let def = Def(qk=qk, name=(DefNameText f.name), home=info.name, file=info.file, span=f.span, body=(DbDefault [[f]], name))
+                let upd = update gg:
+                    &_.defs <= Push &_.defs, def
+                ((upd, s, ms, (Push ds, qk), assocAcc))
+        TiAssocType n, ignore, ignore, ignore, ignore, ignoreAq: ((gg, s, ms, ds, (Push assocAcc, n.name)))
+        TiAssocRow ignore, ?ignore2, ignore3: ((gg, s, ms, ds, assocAcc))
+    # a default body is a body of a method the trait signs, or of one a trait above it
+    # signs (ruling SD; `AboveDefaultsKnown` checks that one, once every trait is read)
+    let st4 = st3
+    let above = Fold defaults, [[]], \|acc, dq| if HasText methods, dq: acc else: Push acc, (((AboveDefaultName dq), dq))
+    # a default for an associated row, `row Lower = unit`, read over the trait's parameter
+    let ((rowDefaults, st4r)) = Fold t.items, (([[]], st4)), \|((acc, s)), it| match it:
+        TiAssocRow n, (? r), ignore:
+            let ((rw, s2)) = ConvRow cx, s, r
+            (((Push acc, ((SNameKey n, rw))), s2))
+        otherwise: ((acc, s))
+    let ti = TraitInfo(assocRowDefaults=rowDefaults, aboveDefaults=above, assocRows=(AssocRowsOf t.items), name=name, home=info.name, param=param, supers=(Each supers, \|((ignore, k))| k), headBounds=headBounds, methods=methods, defaults=(Filter defaults, \|dq| HasText methods, dq), assocs=assocs, assocParams=(AssocParamCounts t.items), assocKinded=(AssocKindedOf t.items), assocDefaults=assocDefaults, file=info.file, span=span)
+    let upd3 = update g3:
+        &_.traits <= Insert &_.traits, name, ti
+    ((upd3, st4))
+
+AssocRowsOf: fn [TraitItem] -> [Text]
+fn AssocRowsOf items = Fold items, [[]], \|acc, it| match it:
+    TiAssocRow n, ignore, ignore2: Push acc, (SNameKey n)
+    otherwise: acc
+
+# An impl: its trait, its head with the head's variables quantified, its `where` bounds,
+# its methods checked later against the trait's signatures.
+ConvImpl: unbounded fn G, St, ModInfo, ImplDecl, Range -> ((G, St))
+fn ConvImpl g, st, info, i, span = match ?ResolveTrait g, info.name, i.traitRef.path:
+    nil: ((g, (Err st, "unknown-name", i.traitRef.span, "no trait `^{Dotted i.traitRef.path}`")))
+    ? cls:
+        let cx = CxOf g, info.name
+        # the bounds before the head and the choices
+        let ((bs, st2a)) = ConvBounds cx, (TraitCollisionAt g, st, info.name, i.traitRef.path, i.traitRef.span), i.bounds
+        let st2 = BoundsNamed st2a, i.bounds, (TypeVarsOfType i.ty), "the impl's head", "the head"
+        let ((head, st3h)) = ConvType cx, st2, i.ty
+        # the equalities a derive asks of the type (Claude's call DE), each side read here
+        let ((equalities, st3)) = Fold i.bounds, (([[]], st3h)), \|((acc, s)), b| match ((b.?head, b.?equals)):
+            ((? left, ? right)):
+                let ((l, s2)) = ConvType cx, s, left
+                let ((r, s3)) = ConvType cx, s2, right
+                (((Push acc, ((l, r, b.span))), s3))
+            otherwise: ((acc, s))
+        # (ruling AQ: a bare name an equation gives that is also a type of the program is
+        # the program's type, which is no associated type of the trait: the equation is
+        # written through its trait, `type ^Document.Reason Player = Reason`)
+        let st3q = Fold i.items, st3, \|s, it| match it:
+            TiAssocType n, ignore, ignore2, ?ignore3, chosenAt, False: match ResolveType g, info.name, [[n.name]]:
+                ((? qk, ignore4)) if HasKey g.types, qk: ErrFix s, "collision", chosenAt, "`{n.name}` here is the program's type `{n.name}`, which is no associated type of `^{BareName cls}`", "write the associated type through its trait, as `^{BareName cls}.{n.name}`"
+                otherwise: s
+            otherwise: s
+        let ((assocs, st4a)) = Fold i.items, (([[]], st3q)), \|((acc, s)), it| match it:
+            TiAssocType n, params, ignore, (? v), chosenAt, ignoreAq if (Len params) == 0:
+                let ((vt, s2)) = ConvType cx, s, v
+                # `collision`: an impl chooses an associated type once; the first stays
+                if Fold acc, False, \|seen, ((chosen, ignore))| seen or chosen == n.name: ((acc, (Err s2, "collision", chosenAt, "a second choice of `type {n.name}`")))
+                else: (((Push acc, ((n.name, vt))), s2))
+            otherwise: ((acc, s))
+        # the equations with indices (Type System ch. 6): a lowercase index a variable for
+        # every role, an uppercase one a role constructor
+        let ((indexed, st4)) = Fold i.items, (([[]], st4a)), \|((acc, s)), it| match it:
+            TiAssocType n, params, ignore, (? v), chosenAt, ignoreAq if (Len params) > 0:
+                let ((vt, s2)) = ConvType cx, s, v
+                let ((indices, s3)) = Fold params, (([[]], s2)), \|((xs, ss)), p|
+                    if IsUpperText p.name: match ?RoleConstructor g, info.name, p.name:
+                        ? k: (((Push xs, (IndexRole k)), ss))
+                        nil: (((Push xs, (IndexVar "")), (ErrFix ss, "unknown-name", p.span, "no variant `{p.name}` of a payload-free choice to stand here", "name a case of the parameter's kind, or a lowercase variable for every variant")))
+                    else: (((Push xs, (IndexVar p.name)), ss))
+                let vars = Fold indices, [[]], \|vs, x| match x:
+                    IndexVar q: if q == "": vs else: Push vs, q
+                    otherwise: vs
+                let eq = AssocImpl(cls=cls, name=n.name, head=head, qs=(Append (TypeVarsOfType i.ty), vars), indices=indices, value=vt)
+                # `assoc-variant-duplicate`: one equation per index (Jimmy's ruling AP)
+                if Fold acc, False, \|seen, e| seen or (e.name == n.name and e.indices == indices): ((acc, (ErrFix s3, "assoc-variant-duplicate", chosenAt, "the impl of `^{BareName cls}` for `{ShowTy s3, head}` gives `{n.name}` a second equation for {IndicesShown indices}; the first is at line {FirstEquationLine g, info, i, n.name, params}", "remove one of them")))
+                else: (((Push acc, eq), s3))
+            otherwise: ((acc, s))
+        # its associated rows, `row Lower = Ui.*` (Type System ch. 3)
+        let ((rowImpls, st4r)) = Fold i.items, (([[]], st4)), \|((acc, s)), it| match it:
+            TiAssocRow n, (? r), ignore:
+                let ((rw, s2)) = ConvRow cx, s, r
+                (((Push acc, AssocRowImpl(cls=cls, name=(SNameKey n), head=head, chosen=rw)), s2))
+            TiAssocRow n, nil, at: ((acc, (ErrFix s, "impl-lacks", at, "an impl chooses its associated row: `row {SNameKey n}` names none", "write `row {SNameKey n} = ...`, a row")))
+            otherwise: ((acc, s))
+        let names = Fold i.items, [[]], \|acc, it| match it:
+            TiFn f: AddText acc, (DefNameText f.name)
+            otherwise: acc
+        let im = ImplInfo(equalities=equalities, aboveChosen=[[]], rows=(Each rowImpls, \|r| r.name), ?through=(?ViaShown i), cls=cls, head=head, qs=(TypeVarsOfType i.ty), bounds=bs, home=info.name, file=info.file, span=span, derived=False, assocs=assocs, indexed=indexed, methods=names)
+        let st5 = update st4r:
+            &_.assocRowImpls <= Append &_.assocRowImpls, rowImpls
+            &_.assocImpls <= Append (Append &_.assocImpls, (Each assocs, \|((an, at))| AssocImpl(cls=cls, name=an, head=head, qs=im.qs, indices=[[]], value=at))), indexed
+        let g2 = update g:
+            &_.impls <= Insert &_.impls, cls, (Push (Or &_.impls[cls], [[]]), im)
+        let g3 = Fold names, g2, \|gg, mname|
+            let clauses = Fold i.items, [[]], \|acc, it| match it:
+                TiFn f: if (DefNameText f.name) == mname: Push acc, f else: acc
+                otherwise: acc
+            update gg:
+                &_.defs <= Push &_.defs, Def(qk="{cls} impl {mname}", name=mname, home=info.name, file=info.file, span=span, body=(DbMethod clauses, cls, im))
+        ((g3, st5))
+
+# The key of a default a trait gives for a method of a trait above it (ruling SD): apart
+# from the method's own key and from the above trait's own default.
+AboveDefaultKey: fn Text, Text -> Text
+fn AboveDefaultKey cls, method = "{cls} default {method}"
+
+AboveDefaultName: fn Text -> Text
+fn AboveDefaultName defaultKey = Or (SplitOn defaultKey, " default ")[1], defaultKey
+
+# The traits above one, each once: its supertraits and theirs.
+TraitsAbove: unbounded fn G, Text -> [Text]
+fn TraitsAbove g, cls = AboveFrom g, (Or g.traits[cls], dummyTrait).supers, [[]]
+
+AboveFrom: unbounded fn G, [Text], [Text] -> [Text]
+fn AboveFrom g, todo, seen = match todo[0]:
+    nil: seen
+    ? next: if HasText seen, next: AboveFrom g, (Drop todo, 1), seen else: AboveFrom g, (Append (Drop todo, 1), (Or g.traits[next], dummyTrait).supers), (Push seen, next)
+
+# The trait above `cls` (or `cls` itself) that signs the method of this bare name.
+?SignerAbove: unbounded fn G, Text, Text -> ?Text
+fn ?SignerAbove g, cls, method = Fold (Push (TraitsAbove g, cls), cls), nil, \|?found, k| match ?found:
+    ? f: ? f
+    nil: if Fold (Or g.traits[k], dummyTrait).methods, False, \|seen, mq| seen or (BareName mq) == method or (DropPrefix mq, "{(Or g.traits[k], dummyTrait).home}.") == method: ? k else: nil
+
+# Every impl of a trait whose method an impl leaves unwritten takes the default of the
+# lowest rung below that trait it also implements that gives one (Jimmy, 13 November,
+# ruling SD): the impl then holds the method as if it were written there, the default's
+# clauses at the impl's head. Two rungs that do not extend each other both giving one
+# is `ambiguous` at the impl, which must write the method. A default for a method no trait
+# above signs is a `mismatch` at the default.
+AboveDefaults: unbounded fn G, St -> ((G, St))
+fn AboveDefaults g, st0:
+    let st1 = Fold (Values g.traits), st0, \|s, tr| Fold tr.aboveDefaults, s, \|s2, ((method, dq))| match ?SignerAbove g, tr.name, method:
+        ? ignore: s2
+        nil:
+            let s3 = update s2:
+                &_.file <= tr.file
+            Err s3, "mismatch", (DefSpanOf g, dq), "`^{BareName tr.name}` has no method `{method}`, and no trait it extends signs one"
+    Fold (Values g.traits), ((g, st1)), \|((g1, s1)), tr| Fold (Or g1.impls[tr.name], [[]]), ((g1, s1)), \|((g2, s2)), im| Fold tr.methods, ((g2, s2)), \|((g3, s3)), mq| AboveDefaultFor g3, s3, tr, im, mq
+
+AboveDefaultFor: unbounded fn G, St, TraitInfo, ImplInfo, Text -> ((G, St))
+fn AboveDefaultFor g, st, tr, im, mq:
+    let method = BareName mq
+    let written = Fold im.methods, False, \|seen, m| seen or m == method or (DropPrefix mq, "{tr.home}.") == m
+    if written or im.derived: ((g, st))
+    else:
+        # the rungs below `tr` that give this method a default and that the impl's head
+        # implements too
+        let givers = Filter (Values g.traits), \|below| below.name != tr.name and (HasText (TraitsAbove g, below.name), tr.name) and (HasAboveDefault below, method) and (HeadImplements g, below.name, im.head)
+        # the lowest: those no other giver extends
+        let lowest = Filter givers, \|one| not (Fold givers, False, \|seen, other| seen or (other.name != one.name and HasText (TraitsAbove g, other.name), one.name))
+        match lowest[0]:
+            nil: ((g, st))
+            ? chosen:
+                if (Len lowest) > 1:
+                    let s2 = update st:
+                        &_.file <= im.file
+                    # in the order the traits are declared
+                    let ordered = Fold lowest, [[]], \|acc, t| Append (Filter acc, \|a| a.span.start < t.span.start or a.file < t.file), (Append [[t]], (Filter acc, \|a| not (a.span.start < t.span.start or a.file < t.file)))
+                    let names = Each ordered, \|t| "`^{BareName t.name}`"
+                    # the method counts as given (`ambiguous` says what is wrong), so the
+                    # impl is not also told it lacks it
+                    let current = Or (Filter (Or g.impls[tr.name], [[]]), \|other| other.span == im.span and other.file == im.file)[0], im
+                    let marked = update current:
+                        &_.aboveChosen <= Push &_.aboveChosen, ((method, (AboveDefaultKey chosen.name, method), chosen.name))
+                    let upd = update g:
+                        &_.impls <= Insert &_.impls, tr.name, (Each (Or &_.impls[tr.name], [[]]), \|other| if other.span == im.span and other.file == im.file: marked else: other)
+                    ((upd, (ErrFix s2, "ambiguous", im.span, "`{ShowTy st, im.head}` gets a default for `{method}` from both {Join names, " and "}", "write `fn {method} ...` under the impl")))
+                else:
+                    # the impl as it now stands: an earlier method's default chosen here is
+                    # kept (each method's pass starts from the impl the fold began with)
+                    let current = Or (Filter (Or g.impls[tr.name], [[]]), \|other| other.span == im.span and other.file == im.file)[0], im
+                    let filled = update current:
+                        &_.aboveChosen <= Push &_.aboveChosen, ((method, (AboveDefaultKey chosen.name, method), chosen.name))
+                    let upd = update g:
+                        &_.impls <= Insert &_.impls, tr.name, (Each (Or &_.impls[tr.name], [[]]), \|other| if other.span == im.span and other.file == im.file: filled else: other)
+                    ((upd, st))
+
+HasAboveDefault: fn TraitInfo, Text -> Bool
+fn HasAboveDefault tr, method = Fold tr.aboveDefaults, False, \|seen, ((m, ignore))| seen or m == method
+
+# Whether some impl of the trait has a head the type matches.
+HeadImplements: unbounded fn G, Text, Ty -> Bool
+fn HeadImplements g, cls, head = Fold (Or g.impls[cls], [[]]), False, \|seen, im| seen or (?MatchHead im.head, head, {{}}) != nil or im.head == head
+
+DefSpanOf: fn G, Text -> Range
+fn DefSpanOf g, qk = Fold g.defs, Range(start=0, end=0, origin=InSource), \|r, d| if d.qk == qk: d.span else: r
+
+# Whether a trait below `tr` that the impl's head implements gives a default for `method`.
+BelowGivesDefault: unbounded fn G, TraitInfo, ImplInfo, Text -> Bool
+fn BelowGivesDefault g, tr, im, method = Fold (Values g.traits), False, \|seen, below| seen or (below.name != tr.name and (HasText (TraitsAbove g, below.name), tr.name) and (HasAboveDefault below, method) and (HeadImplements g, below.name, im.head))
+
+HasAboveChosen: fn ImplInfo, Text -> Bool
+fn HasAboveChosen im, method = Fold im.aboveChosen, False, \|seen, ((m, ignore, ignore2))| seen or m == method
+
+# A trait's default for an associated row (`row Lower = unit` under the trait): an impl that
+# does not choose the row takes the default, the trait's parameter read as the impl's head,
+# as for an associated type's default (`ImplTypeDefaults`).
+ImplRowDefaults: unbounded fn G, St -> ((G, St))
+fn ImplRowDefaults g, st = Fold (Values g.traits), ((g, st)), \|((g1, st1)), tr|
+    if (Len tr.assocRowDefaults) == 0: ((g1, st1))
+    else:
+        let ((impls, added)) = Fold (Or g1.impls[tr.name], [[]]), (([[]], [[]])), \|((done, new)), im|
+            let taken = Filter tr.assocRowDefaults, \|((name, ignore))| not (im.derived or HasText im.rows, name)
+            let filled = update im:
+                &_.rows <= Append &_.rows, (Each taken, \|((name, ignore))| name)
+            let rowImpls = Each taken, \|((name, rw))| AssocRowImpl(cls=im.cls, name=name, head=im.head, chosen=(SubstRowParam rw, tr.param, im.head))
+            (((Push done, filled), (Append new, rowImpls)))
+        let g2 = update g1:
+            &_.impls <= Insert &_.impls, tr.name, impls
+        let st2 = update st1:
+            &_.assocRowImpls <= Append &_.assocRowImpls, added
+        ((g2, st2))
+
+# A row read over a trait's parameter at a head: an associated row there, `Lower d`, at the
+# head.
+SubstRowParam: fn Rw, Text, Ty -> Rw
+fn SubstRowParam rw, param, head = match rw.tail:
+    TlAssoc tr, name, (TyQ p) if p == param: update rw:
+        &_.tail <= TlAssoc tr, name, head
+    otherwise: rw

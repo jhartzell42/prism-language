@@ -1,0 +1,21 @@
+# A function of a block that applies itself as a widget: `fn @Tower n` whose block ends
+# on `@Tower m` under a building `match` (Semantics ch. 4: a function defined in a block
+# reads the block's names; ch. 8: a widget applied is transparent, and a widget that
+# calls itself builds as deep as its data; ruling LS: a local function that calls itself
+# has a signature; ruling TC: places are counted as built). Written by Claude on the
+# claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+@table: @unit
+@table:
+    !add <- Ui.Button($label=$"add")
+    $count <- 0 then $count + 1 on !add
+    @Tower: fn Nat -> @unit emit Ui.*
+    fn @Tower n:
+        Ui.Label($text=$"level {n} at {$count}")
+        match n -? 1:
+            ? m: @Tower m
+            nil: Ui.Label($text=$"ground")
+    @Tower 2
+    Ui.Label($text=$"after")

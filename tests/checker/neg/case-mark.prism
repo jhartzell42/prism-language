@@ -1,0 +1,39 @@
+# Expected text derived by hand from Language ch. 10 ("a lowercase letter or `_` begins a
+# value, an uppercase letter a function, constructor, type or trait"), Language ch. 1 ("A
+# parameter whose value is a function is uppercase: `fn Apply F, x = F x`") and Type System
+# ch. 1 ("a parameter holding a function is uppercase, `K` and never `k`").
+# `case-mark`: a name's case says what it is bound to, in a `let`, a parameter, a lambda's
+# parameter and a `match` arm alike. `let Twice = \|x| x + x` (Type System ch. 7),
+# `let Sum = ..` and `fn Apply F, x` are legal. Written by Claude on the claude-lowering
+# branch; subject to change.
+
+Size: fn [Nat] -> Nat
+fn Size xs:
+    let W = Len xs
+    let Twice = \|x| x + x
+    Twice W
+
+Bump: fn [Nat] -> [Nat]
+fn Bump xs:
+    let next = \|x| x + 1
+    Each xs, next
+
+Apply: fn (fn Nat -> Nat), Nat -> Nat
+fn Apply F, x = F x
+
+Again: fn (fn Nat -> Nat), Nat -> Nat
+fn Again f, x = Apply f, x
+
+Pair: fn Nat -> Nat
+fn Pair n:
+    let ((Low, high)) = ((n, n + 1))
+    let Sum = \|a, b| a + b
+    Sum Low, high
+
+Pick: fn ?Nat -> [Nat]
+fn Pick ?o = match ?o:
+    ? N: [[N]]
+    nil: [[]]
+
+Up: fn [Nat] -> [Nat]
+fn Up xs = Each xs, \|Y| Y + 1

@@ -1,0 +1,14 @@
+# `Shapes`: a directory, since it has children; it names them by full path, and they it.
+emit r
+mod Round
+mod Flat
+mod Static
+mod Switch
+use Shapes.Round.Circle
+
+# A unit every child names as `Shapes.Unit`.
+Unit: fn Nat -> Nat
+fn Unit n = n
+
+Total: fn Nat -> Nat
+fn Total n = (Shapes.Round.Circle.Area n) + (Shapes.Flat.Area n) + (Shapes.Static.Sides Shapes.Static.Square) + (Shapes.Switch.Pick True, n)

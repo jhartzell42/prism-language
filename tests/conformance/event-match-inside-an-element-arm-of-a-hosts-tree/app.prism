@@ -1,0 +1,41 @@
+# A function over a place of a host's element tree that matches the element by its tag
+# and then matches the tag's event field by its constructor, giving an event (the
+# library's `!ReplacesAt`: `Seat.Request(!requests=!requests): match !requests: Replace
+# bytes: bytes`), switched by a `for` over the tree (`@OnDisk`'s `!replaces`). Isolated
+# from tests/documents/tally, c6 and c8, whose crates matched the event itself against
+# `FileRequest::Replace(..)` (rustc E0308: mismatched types).
+# Written by Claude (round after q11), 16 November 2026; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+type Change = choice:
+    Replace Text
+derive ^Eq, ^Debug
+
+tag Pad.Write of Element !unit:
+    !requests: Change
+
+!WritesAt: fn Path, Elem (Pad.* | Ui.*) -> !Text
+fn !WritesAt at, element = match element:
+    Pad.Write(!requests=!requests): match !requests:
+        Replace text: text
+    otherwise: never
+
+?LastOf: fn [a] -> ?a
+fn ?LastOf all = Fold all, nil, \|?last, each| ? each
+
+@writer: @unit emit Ui.* | Pad.*
+@writer:
+    !save <- Ui.Button($label=$"save")                                     # 0
+    !saved <- Pad.Write(!requests=((Replace "hello") on !save))            # 1
+    Ui.Label($text=$"writer")                                              # 2
+
+@page: @unit
+@page:
+    ((ignore, $tree)) <- @Host @writer, \|path, prompt element| match element:     # 0
+        Pad.Write(..): @ never
+        otherwise: @Element element
+    !writes <- for at, $element <- $tree:                                  # 1
+        @Switch (!WritesAt at, $element)
+    $last <- "nothing" then !Filter (?LastOf (Values !writes))
+    Ui.Label($text=$"last write: {$last}")                                 # 2

@@ -1,0 +1,4 @@
+tests/checker/neg/existential-two-hidden.prism:19: error[mismatch]: two existentials meet here, each `any ^Eq` hiding a type of its own
+    fn Checks n = (Twice (HideNat n)) and Same (HideNat n), (HideText "hi")
+                                                            ^^^^^^^^^^^^^^^
+1 error

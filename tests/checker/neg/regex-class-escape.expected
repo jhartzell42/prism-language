@@ -1,0 +1,4 @@
+tests/checker/neg/regex-class-escape.prism:2: error[regex]: an escape that a class cannot hold
+    let r = %/[\b]/
+               ^
+1 error

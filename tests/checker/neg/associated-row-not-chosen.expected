@@ -1,0 +1,5 @@
+tests/checker/neg/associated-row-not-chosen.prism:14: error[impl-lacks]: this impl of `^Panel` lacks `row Lower`
+    impl ^Panel Greeting:
+    ^^^^^^^^^^^^^^^^^^^^^
+  fix: choose it under the impl, `row Lower = ...`
+1 error

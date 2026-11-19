@@ -1,0 +1,15 @@
+# A place's answer is the next tick's input (ruling HO, Language ch. 6, "Tick by tick";
+# "No prompt computed output"), so a place whose field reads its own answer is feedback
+# through a delay, never a prompt cycle: `!answer` fires at n+1 for a request at n.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.* | Count.*
+
+family Count
+
+tag Count.Ask of Element !Nat:
+    !by: Nat
+
+@Asking: @!Nat
+@Asking:
+    !answer <- Count.Ask(!by=!answer)
+    @ !answer

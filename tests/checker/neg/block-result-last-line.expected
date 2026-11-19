@@ -1,0 +1,13 @@
+tests/checker/neg/block-result-last-line.prism:13: error[mismatch]: expected `Nat`, found `Text`
+        "{more}"
+        ^^^^^^^^
+tests/checker/neg/block-result-last-line.prism:22: error[mismatch]: expected `Text`, found `Nat`
+            small
+            ^^^^^
+tests/checker/neg/block-result-last-line.prism:29: error[mismatch]: expected `Text`, found `Nat`
+        @ n
+        ^^^
+tests/checker/neg/block-result-last-line.prism:35: error[mismatch]: expected `unit`, found `!Click`
+        Ui.Button($label=$"z")
+        ^^^^^^^^^^^^^^^^^^^^^^
+4 errors

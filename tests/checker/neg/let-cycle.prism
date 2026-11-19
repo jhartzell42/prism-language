@@ -1,0 +1,12 @@
+# `may-not-end`: a top-level `let` is a definition of the shrink check (pick TD).
+# `start` calls `Next`, which reads `start`, so `start` never has a value; `base` is read
+# by `Shifted`, which `base` does not reach, and checks clean.
+let start = Next 1
+
+Next: fn Nat -> Nat
+fn Next n = start + n
+
+let base = 10
+
+Shifted: fn Nat -> Nat
+fn Shifted n = base + n

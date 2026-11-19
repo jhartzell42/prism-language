@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 2, "Collections": a non-empty array or map is the collection with a promise, so `Len`, an index, a fold, `==` and an array pattern read it as they read the collection.
+test non_empty_uses
+
+tick 0
+  added:
+    0: Ui.Label(text="3 2 3 b 3 many one 7 same")

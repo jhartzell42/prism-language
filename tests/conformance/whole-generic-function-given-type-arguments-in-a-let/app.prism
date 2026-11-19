@@ -1,0 +1,33 @@
+# A function that takes time whole, generic and given its type arguments (`Knocking<<Nat>>`),
+# called in a widget's `let`: the hold it is given is its live dynamic, as it is in a call
+# with no type arguments. The documents' `SupplierFrom<<d>> ($Loaded $state), ..` refused
+# the same way (gap LF). Written by Claude, 15 November 2026, on the claude-self-hosting
+# branch. Subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Knock of Element !Nat:
+    name: Text
+
+@door: @unit emit Ui.* | Pad.*
+@door:
+    !knocked <- Pad.Knock(name="door")                                 # 0
+    $knocks <- 0 then $knocks + 1 on !knocked
+    Ui.Label($text=$"knocks {$knocks}")                                # 1
+
+type Supplier = forall o. fn Path, prompt Element (Ui.* | Pad.*) o -> @o
+
+?Pos: fn Nat -> ?Nat
+fn ?Pos n = if n > 0: ? n else: nil
+
+Knocking: forall s. fn $s, !Nat -> Supplier
+fn Knocking $level, !n = \|path, prompt element| match element:
+    Pad.Knock(..): @ !Filter (?Pos (1 on (!Updated $level)))
+    otherwise: @Element element
+
+@host: @unit
+@host:
+    !add <- Ui.Button($label=$"add")                                   # 0
+    $held <- 1 then $held + 1 on !add
+    let Supply = Knocking<<Nat>> $held, (1 on !add)
+    ignore <- @Host @door, Supply                                      # 1.[p]/0

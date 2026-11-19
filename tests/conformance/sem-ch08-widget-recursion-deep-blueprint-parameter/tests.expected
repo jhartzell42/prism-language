@@ -1,0 +1,28 @@
+# Derived by hand from ruling TC and Semantics ch. 8 (a blueprint parameter is built where the widget applies it, at the next positions): levels 20 down to 1 take places 0 to 19, the blueprint's two labels 20 and 21, and the caller's label the next number, 22.
+test twenty_levels_pass_a_blueprint
+
+tick 0
+  added:
+    0/0: Ui.Label(text="level 20")
+    0/1.0/0: Ui.Label(text="level 19")
+    0/1.0/1.0/0: Ui.Label(text="level 18")
+    0/1.0/1.0/1.0/0: Ui.Label(text="level 17")
+    0/1.0/1.0/1.0/1.0/0: Ui.Label(text="level 16")
+    0/1.0/1.0/1.0/1.0/1.0/0: Ui.Label(text="level 15")
+    0/1.0/1.0/1.0/1.0/1.0/1.0/0: Ui.Label(text="level 14")
+    0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/0: Ui.Label(text="level 13")
+    0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/0: Ui.Label(text="level 12")
+    0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/0: Ui.Label(text="level 11")
+    0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/0: Ui.Label(text="level 10")
+    0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/0: Ui.Label(text="level 9")
+    0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/0: Ui.Label(text="level 8")
+    0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/0: Ui.Label(text="level 7")
+    0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/0: Ui.Label(text="level 6")
+    0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/0: Ui.Label(text="level 5")
+    0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/0: Ui.Label(text="level 4")
+    0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/0: Ui.Label(text="level 3")
+    0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/0: Ui.Label(text="level 2")
+    0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/0: Ui.Label(text="level 1")
+    0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/0/0: Ui.Label(text="mark")
+    0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/1.0/0/1: Ui.Label(text="end")
+    1: Ui.Label(text="after")

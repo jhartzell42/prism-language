@@ -1,0 +1,11 @@
+# Derived by hand: the label shows the map's size, 2,000, and an edit of one key changes no place.
+test one_edit
+
+tick 0
+  added:
+    0: Ui.Button(label="edit")
+    2: Ui.Label(text="2000")
+
+tick 1
+  in:
+    0: click

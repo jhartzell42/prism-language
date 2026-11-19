@@ -1,0 +1,6 @@
+# The tests of sem-ch05-update-recursive-field.
+emit Ui.*
+use App.*
+
+test recursive_field_written, @page:
+    build

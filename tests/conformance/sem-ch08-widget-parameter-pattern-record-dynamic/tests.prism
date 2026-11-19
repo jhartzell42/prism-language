@@ -1,0 +1,7 @@
+# The tests of sem-ch08-widget-parameter-pattern-record-dynamic.
+emit Ui.*
+use App.*
+
+test the_bound_dynamic_follows, @page:
+    build
+    click at 0

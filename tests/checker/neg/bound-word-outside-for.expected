@@ -1,0 +1,4 @@
+tests/checker/neg/bound-word-outside-for.prism:9: error[unknown-name]: `ix` outside a loop: it names the index of the `for` it stands in
+    fn Next n = n + ix
+                    ^^
+1 error

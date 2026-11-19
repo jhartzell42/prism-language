@@ -1,0 +1,4 @@
+tests/checker/neg/regex-hex-no-char.prism:2: error[regex]: a \x escape names no character: a surrogate or past U+10FFFF
+    let r = %/\x{D800}/
+              ^
+1 error

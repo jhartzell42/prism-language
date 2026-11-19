@@ -1,0 +1,27 @@
+# A host's answers are the next tick's input (ruling HO, Language ch. 6, "Tick by tick":
+# "no prompt cycle runs through a host: hosting means inserting delay"): `@Boxed` hosts
+# its child, handing each place the box's own clicks, `!in`, and the box element reads the
+# places, `$elems`; `!in` is prompt on `$elems`, but nothing the handler captures is an edge
+# of the host's line, so there is no cycle. Found by the step 3 build on chess (`@Grid`,
+# `@VBox`, ...) and on the library (`@HostDocument`'s `$guests` and `Supply`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.* | Box.*
+
+family Box
+
+tag Box.Click of Element !unit:
+    label: Text
+
+tag Box.Frame of Element !Path:
+    $children: (Path ==> $Elem)
+
+?Answered: fn Path, Element o, !Path -> ?@o
+fn ?Answered p, e, !in = match e:
+    Box.Click(..): ? @ (unit on !in)
+    otherwise: nil
+
+@Boxed: fn prompt @a -> @a
+fn @Boxed @child:
+    ((r, $elems)) <- @HostSome @child, \|p, e| ?Answered p, e, !in
+    !in <- Box.Frame($children=$elems)
+    @ r

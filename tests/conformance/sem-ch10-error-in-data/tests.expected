@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 10 (a `~T` is a `T` or an `Error`; a bare `Error(..)` where a `~T` is wanted is that `~T`'s failure, and `r == Error(..)` is a plain test): each `Error` inside a value shows its message where the value meets its `~Nat`.
+test error_inside
+
+tick 0
+  added:
+    0: Ui.Label(text="!a !o !m !b !r !l3 !f !i !n !d !k1 False False")

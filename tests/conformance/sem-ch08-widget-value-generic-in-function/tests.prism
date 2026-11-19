@@ -1,0 +1,6 @@
+# The tests of sem-ch08-widget-value-generic-in-function.
+emit Ui.*
+use App.*
+
+test it_builds, @Page:
+    build

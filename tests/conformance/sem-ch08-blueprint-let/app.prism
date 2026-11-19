@@ -1,0 +1,21 @@
+# A blueprint bound by a `let` in a widget block and built by the lines that apply it
+# (Semantics ch. 8: a blueprint is a value that builds nothing until a block applies it,
+# and each application builds it anew at the block's next positions; ch. 4: `let` names a
+# value). Built twice, bare and bound, it gives two places and its plain result.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Tile: fn Nat -> @Nat
+fn @Tile n:
+    Ui.Label($text=$"tile {n}")
+    @ n * 2
+
+@main: @unit
+@main:
+    let k = 4
+    let @w = @Tile k
+    ignore <- @w                                                 # 0
+    d <- @w                                                      # 1
+    Ui.Label($text=$"double {d}")                                # 2

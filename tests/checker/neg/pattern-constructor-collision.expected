@@ -1,0 +1,13 @@
+tests/checker/neg/pattern-constructor-collision/app.prism:16: error[collision]: `Small` is declared by more than one module this file reaches by a bare name: `Birds.Small`, `Fish.Small`
+        Small: True
+        ^^^^^
+  fix: write the one meant qualified, as `Birds.Small`, or rename this file's own
+tests/checker/neg/pattern-constructor-collision/app.prism:20: error[collision]: `Sized` is declared by more than one module this file reaches by a bare name: `Birds.Sized`, `Fish.Sized`
+    fn Size (Sized n) = n
+             ^^^^^
+  fix: write the one meant qualified, as `Birds.Sized`, or rename this file's own
+tests/checker/neg/pattern-constructor-collision/app.prism:24: error[collision]: `Pair` is declared by more than one module this file reaches by a bare name: `Birds.Pair`, `Fish.Pair`
+    fn Left (Pair(left=l, ..)) = l
+             ^^^^
+  fix: write the one meant qualified, as `Birds.Pair`, or rename this file's own
+3 errors

@@ -1,0 +1,9 @@
+# The tests of sem-ch04-late-place-answer-in-generalized-let.
+emit Ui.* | Pad.*
+use App.*
+
+test loud, @Page True:
+    with Pad.Count(name="count 10") = 5, build
+
+test soft, @Page False:
+    with Pad.Count(name="count 20") = 6, build

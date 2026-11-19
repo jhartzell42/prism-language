@@ -1,0 +1,21 @@
+# A block's `fn` with no signature line that calls itself (Jimmy's ruling LS: "Self calling
+# local function needs a signature why not?"): a local function that calls itself needs a
+# signature line, as a top-level function does, and says so with `no-signature`, never
+# `may-not-end`. One that does not call itself has none and generalizes (Type System
+# ch. 5, "A local `let` generalizes"); the signed form checks
+# (pos/local-function-recursive-signed). The expected text is derived by hand from the
+# ruling. Written by Claude on the claude-lowering-wip and claude-bugs branches; subject
+# to change.
+emit Ui.*
+use Ui.*
+
+Total: fn Nat -> Nat
+fn Total n:
+    fn Go k, acc = match k -? 1:
+        ? less: Go less, acc + k
+        nil: acc
+    Go n, 0
+
+@page: @unit
+@page:
+    Ui.Label($text=$"sum {Total 4}")

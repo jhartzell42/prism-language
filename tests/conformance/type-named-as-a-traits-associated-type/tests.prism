@@ -1,0 +1,6 @@
+# The tests of type-named-as-a-traits-associated-type.
+emit Ui.*
+use App.*
+
+test said, @page:
+    build

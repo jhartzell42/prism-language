@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 2's choices: `Built 3` has the leaves 3 and 4 and an empty case, so `Count` is 2; a choice shows as its cases are written (a case with a payload in parentheses where it stands as an argument or an element), a case as a function value builds one per text, and the tree equals one built again.
+test generic_cases_build_and_match
+
+tick 0
+  added:
+    0: Ui.Label(text="2 Node (Node (Leaf 3), Empty), (Leaf 4) [[(Leaf \"a\"), (Leaf \"b\")]] True")

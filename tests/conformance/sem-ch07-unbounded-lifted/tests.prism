@@ -1,0 +1,15 @@
+# The lifted unbounded call's tests: declarations of sem-ch07-unbounded-lifted.
+emit Ui.*
+use App.*
+
+test present, @Counted 1:
+    build
+        => expect Ui.Label(text="working")
+    compute until idle
+        => expect Ui.Label(text="3")
+
+test absent, @Counted 0:
+    build
+        => expect Ui.Label(text="working")
+    compute until idle
+        => expect Ui.Label(text="none")

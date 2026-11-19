@@ -1,0 +1,26 @@
+# A lambda given where a function marked `prompt` is wanted needs no mark of its own: the
+# wanted type says it (ruling PT; fewer marks stand where more are wanted, and the wanted
+# marks are the lambda's). `@Host`'s handler marks its element, so `\|p, e| @Supply e`
+# stands there though `@Supply` fires with `e`. Found by the step 3 run on p12
+# (sem-ch09-host-local-supplier-*).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.* | Count.*
+
+family Count
+
+tag Count.Ask of Element !Nat:
+    by: Nat
+
+@Supply: fn prompt Element Count.* o -> @o
+fn @Supply e = match e:
+    Count.Ask(by=by): @ never
+
+@Asker: @unit emit Count.*
+@Asker:
+    !n <- Count.Ask(by=3)
+    @ unit
+
+@hosting: @unit
+@hosting:
+    ignore <- @Host @Asker, \|p, e| @Supply e
+    @ unit

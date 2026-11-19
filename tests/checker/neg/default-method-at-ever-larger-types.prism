@@ -1,0 +1,16 @@
+# Expected by hand from ruling PG; never run when written.
+# `grows-without-end` through a trait's default method: `Dig`'s default asks for `^Deep`
+# at `[a]`, and `impl ^Deep [a]` writes no `Dig` of its own, so the default is its
+# method: the impl needs itself at `[a]` for `a`, at `[Nat]`, `[[Nat]]`, and so on.
+trait ^Deep a:
+    Base: fn a -> Nat
+    Dig: fn a, Nat -> Nat
+    fn Dig x, more = match more -? 1:
+        ? less: Dig [[x]], less
+        nil: Base x
+
+impl ^Deep Nat:
+    fn Base n = n
+
+impl ^Deep [a] where a: ^Deep:
+    fn Base xs = Len xs

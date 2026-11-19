@@ -1,0 +1,6 @@
+# Derived by hand: the impl writes Kind; Name is ^Titled's default.
+test default_from_below
+
+tick 0
+  added:
+    0: Ui.Label(text="book: titled Dune")

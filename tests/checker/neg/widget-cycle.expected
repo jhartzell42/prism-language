@@ -1,0 +1,5 @@
+tests/checker/neg/widget-cycle.prism:10: error[may-not-end]: `@looped` calls itself, not smaller than what it was given
+        @again
+        ^^^^^^
+  fix: make an argument shrink (a part taken apart by `match`, or the `? m` of `match n -? 1`), or mark the cycle's functions `unbounded fn`
+1 error

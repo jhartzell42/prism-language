@@ -1,0 +1,4 @@
+tests/checker/neg/regex-count-order.prism:2: error[regex]: a count whose minimum exceeds its maximum
+    let r = %/a{3,2}/
+               ^
+1 error

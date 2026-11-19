@@ -1,0 +1,17 @@
+# An element's `$` field binds its dynamic (Type System ch. 4: a `$` field of an element
+# binds a `$T`; neg live-field-bare): a pattern that would test the field's value,
+# `$text=$"x"`, has no tick to test it in, since the element is live or a description, not
+# a document's snapshot. prismc's back end refuses it today ("a pattern inside an
+# element's `$` field"); the checker should. Written by Claude on the claude-lowering
+# branch; subject to change.
+emit Ui.*
+use Ui.*
+
+IsX: fn Element Ui.* o -> Bool
+fn IsX e = match e:
+    Ui.Label($text=$"x"): True
+    otherwise: False
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{IsX (Ui.Label($text=$"x"))}")

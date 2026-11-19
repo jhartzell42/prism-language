@@ -1,0 +1,4 @@
+tests/checker/neg/regex-stray-brace.prism:2: error[regex]: a } outside a count: a literal one is \}
+    let r = %/a}/
+               ^
+1 error

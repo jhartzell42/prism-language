@@ -1,0 +1,13 @@
+# The book prints none for this program; written by hand from Semantics ch. 5.
+check lens_to_an_index
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+
+check lens_through_an_index
+1: ok
+
+check lens_over_an_index_lens
+1: ok

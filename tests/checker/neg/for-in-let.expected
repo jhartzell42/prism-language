@@ -1,0 +1,5 @@
+tests/checker/neg/for-in-let.prism:16: error[mismatch]: a `for` builds its rows and `let` builds nothing
+        let doubled = for x <- xs: @ x * 2
+                      ^^^^^^^^^^^^^^^^^^^^
+  fix: bind its result with `<-`: `doubled <- for x <- xs: ..`
+1 error

@@ -1,0 +1,24 @@
+# The counter's tests: declarations of counter.prism (Semantics chapter 6). Not yet run.
+emit Ui.*
+use App.*
+
+# Conformance chapter 1's
+test counter_counts, @counter:
+    build
+        => expect Ui.Label(text="Count: 0")
+    click Ui.Button(label="Increment")
+        => expect Ui.Label(text="Count: 1")
+    click Ui.Button(label="Increment"), click Ui.Button(label="Decrement")
+        => expect Ui.Label(text="Count: 0")
+
+# Semantics chapter 1's transcript, and D13: both clicks in one tick, and `<|` keeps its left,
+# the decrement
+test two_clicks_at_once_keep_the_left, @counter:
+    build
+        => expect Ui.Label(text="Count: 0")
+        => expect_count Ui.Button(..), 2
+    click Ui.Button(label="Increment"), click Ui.Button(label="Decrement")
+        => expect Ui.Label(text="Count: -1")
+        => expect_none Ui.Label(text="Count: 1")
+    click Ui.Button(label="Decrement")
+        => expect Ui.Label(text="Count: -2")

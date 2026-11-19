@@ -1,0 +1,4 @@
+tests/checker/neg/functions-at-ever-larger-types-through-each-other.prism:10: error[grows-without-end]: `Even` calls itself through `Odd` at `[a]` for `a`: a type that grows without end
+        ? less: Even [[xs]], less
+                ^^^^
+1 error

@@ -1,0 +1,23 @@
+# An unmarked parameter whose blueprints give back a type variable (`@Seated`'s) given a
+# record's field whose blueprints give back `unit`: the field's type says what the guests
+# give back, and nothing timed, so the result borrows nothing of the record and `@Both`
+# needs no `prompt` (claude/promptness-checker.md, "Lifetimes ride inside types"). The
+# library's own `@HostSeats` impls pass `seats.$editor` so; the q3 run refused every
+# program over it, the field's type not read.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+type Pair = record:
+    $left: (Text ==> $@(@unit emit Ui.*))
+
+@Run: fn $(k ==> $@(@a emit r)) -> @$(k ==> a) emit r where k: ^Ord
+fn @Run $seats:
+    $built <- for seat, $@guest <- $seats:
+        rebuild $@guest:
+            _
+    @ $built
+
+@Both: fn Pair -> @$(Text ==> unit) emit Ui.*
+fn @Both pair:
+    $out <- @Run pair.$left
+    @ $out

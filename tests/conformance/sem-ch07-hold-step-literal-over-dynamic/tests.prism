@@ -1,0 +1,13 @@
+# The tests of sem-ch07-hold-step-literal-over-dynamic.
+emit Ui.*
+use App.*
+
+test the_step_tuple_holds_the_dynamic, @page:
+    build
+        => expect Ui.Label(text="0 s")
+    click at 0
+        => expect Ui.Label(text="1 s")
+    click at 1
+        => expect Ui.Label(text="1 t")
+    compute
+        => expect Ui.Label(text="101 t")

@@ -1,0 +1,7 @@
+# Derived by hand: the record shows by its name, the row value by its tag (as
+# ts-ch02-row-values shows `Ink.Line(..)`).
+test type_named_as_tag_struct
+
+tick 0
+  added:
+    0: Ui.Label(text="InkRect(w=2) [[Ink.Rect(w=3)]]")

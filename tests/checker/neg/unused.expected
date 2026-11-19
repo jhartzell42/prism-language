@@ -1,0 +1,5 @@
+tests/checker/neg/unused.prism:11: warning[unused]: nothing uses `Forgotten`
+    fn Forgotten n = n * 2
+    ^^^^^^^^^^^^^^^^^^^^^^
+  fix: delete it, or use it
+no errors

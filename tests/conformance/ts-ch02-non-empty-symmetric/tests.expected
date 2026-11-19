@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 2, "Collections": a non-empty array or map is the collection with a promise, so it equals the collection of the same entries from either side, and stands beside one in two arguments, two arms and an array.
+test non_empty_symmetric
+
+tick 0
+  added:
+    0: Ui.Label(text="same same differs same 1 2 1 2")

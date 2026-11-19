@@ -1,0 +1,33 @@
+# A generic widget function read as a value in a generic function (`?Framed`), which a
+# local function of a widget, generic in its own parameter, calls at a type built from
+# that parameter (Semantics ch. 8: a widget's name is its blueprint, a value; Type System
+# ch. 5: a local function is generalized, each use its own instance). Each use of the
+# local function decides its type, so every instance of `?Framed` has a type. Reaches the
+# refusal "a quantified type variable of `?Made`: no instantiation gives it a type"
+# (`OutQuantified`) on prismc-s4; sem-ch08-widget-value-generic-in-generalized-let, where
+# the local function reads the widget itself, lowers.
+# Written by Claude (sweep-5, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+?Pick: fn Bool, @a -> ?@a
+fn ?Pick b, @w = if b: ? @w else: nil
+
+@Named: fn a, Text -> @unit
+fn @Named x, label:
+    Ui.Label($text=$"{label}")
+
+?Framed: fn a, Text -> ?@unit
+fn ?Framed x, label = ?Pick True, (@Named x, label)
+
+@Page: @unit
+@Page:
+    fn ?Made y, label = ?Framed ((y, y)), label
+    let five: Nat = 5
+    match ?Made five, "five":                                    # 0
+        ? @t: @t
+        nil: Ui.Label($text=$"none")
+    match ?Made "t", "text":                                     # 1
+        ? @t: @t
+        nil: Ui.Label($text=$"none")

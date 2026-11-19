@@ -1,0 +1,19 @@
+# `!Updated` of a dynamic a widget takes as a parameter (Semantics ch. 7: `!Updated $d` is
+# the event half of any dynamic; the caller writes the hold behind the parameter, and the
+# widget hears it in the same tick, with the value after the tick).
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Heard: fn $Nat -> @unit
+fn @Heard $c:
+    $n <- 0 then $n + 1 on !Updated $c
+    $last <- 0 then !Updated $c
+    Ui.Label($text=$"heard {$n}, last {$last}")                  # 1
+
+@page: @unit
+@page:
+    !bump <- Ui.Button($label=$"bump")                           # 0
+    $a <- 0 then $a + 1 on !bump
+    @Heard $a                                                    # 1

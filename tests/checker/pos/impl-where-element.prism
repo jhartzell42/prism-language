@@ -1,0 +1,15 @@
+# An impl for a collection whose `where` bounds the element, `impl ^Blank [a] where a:
+# ^Blank` (Type System ch. 3), is found at a use over `[Text]`: the checker accepts the
+# impl and then says "no impl of `^Blank` for `[Text]`". Written by Claude on the
+# claude-bugs branch; subject to change.
+trait ^Blank a:
+    Blank: fn a -> Bool
+
+impl ^Blank Text:
+    fn Blank t = t == ""
+
+impl ^Blank [a] where a: ^Blank:
+    fn Blank xs = Fold xs, True, \|ok, x| ok and Blank x
+
+AllBlank: fn [Text] -> Bool
+fn AllBlank ts = Blank ts

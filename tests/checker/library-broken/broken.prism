@@ -1,0 +1,5 @@
+# A standard-library module with a type error: no program uses it.
+emit r
+
+Off: fn Nat -> Text
+fn Off n = n

@@ -1,0 +1,8 @@
+# Derived by hand from Part III ch. 6 (a response at a role holds that role's reason) and Semantics ch. 8 (a function's first matching clause is taken).
+test each_response_said
+
+tick 0
+  added:
+    0: Ui.Label(text="accepted")
+    1: Ui.Label(text="declined: not your move")
+    2: Ui.Label(text="declined: nothing at 9")

@@ -1,0 +1,7 @@
+# The tests of sem-ch07-run-constructor.
+emit Ui.*
+use App.*
+
+test a_constructor_runs, @page:
+    build
+    compute

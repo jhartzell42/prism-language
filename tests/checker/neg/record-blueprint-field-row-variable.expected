@@ -1,0 +1,9 @@
+tests/checker/neg/record-blueprint-field-row-variable/cards.prism:6: error[unknown-name]: the field `@inside` of `Slot` emits the module's row `r`, and a record has no row of its own
+        @inside: unit
+        ^^^^^^^^^^^^^
+  fix: write the row on the field's type, as `emit Ui.*`
+tests/checker/neg/record-blueprint-field-row-variable/cards.prism:7: error[unknown-name]: the field `make` of `Slot` emits the module's row `r`, and a record has no row of its own
+        make: fn Nat -> @unit
+        ^^^^^^^^^^^^^^^^^^^^^
+  fix: write the row on the field's type, as `emit Ui.*`
+2 errors

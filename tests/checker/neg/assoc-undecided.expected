@@ -1,0 +1,9 @@
+tests/checker/neg/assoc-undecided.prism:21: error[ambiguous]: nothing decides the associated type in `Text` = `Item t11`
+        let G = \|x| (Takes (Open x)) + n
+                            ^^^^^^^^
+  fix: annotate the value's type
+tests/checker/neg/assoc-undecided.prism:21: error[ambiguous]: nothing decides `t11` in `^Box t11`; annotate, or write a suffixed operator
+        let G = \|x| (Takes (Open x)) + n
+                             ^^^^^^
+  fix: annotate the value's type
+2 errors

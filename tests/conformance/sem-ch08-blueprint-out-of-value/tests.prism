@@ -1,0 +1,9 @@
+# The tests of sem-ch08-blueprint-out-of-value.
+emit Ui.*
+use App.*
+
+test picked, @Page True:
+    build
+
+test not_picked, @Page False:
+    build

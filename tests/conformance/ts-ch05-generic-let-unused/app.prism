@@ -1,0 +1,18 @@
+# A `let` of a widget block whose value is generic is generalized (Type System ch. 5:
+# a `let` generalizes), and one nothing reads has no instantiation; it is still a legal
+# line, and the block builds as if it were not there. An identity lambda, an empty array,
+# a pair of `nil` and an empty array, and a list of a result-only generic's answers.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+
+?Nothing: fn Nat -> ?a
+fn ?Nothing n = nil
+
+@main: @unit
+@main:
+    let Same = \|x| x
+    let empty = [[]]
+    let pair = ((nil, [[]]))
+    let blanks = Each [[1, 2]], ?Nothing
+    Ui.Label($text=$"built")                                      # 0

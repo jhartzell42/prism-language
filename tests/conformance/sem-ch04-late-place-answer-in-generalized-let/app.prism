@@ -1,0 +1,26 @@
+# A `let` of a lambda that closes over the plain answer of a World's place whose constant
+# field reads a building `if`'s late plain result below it, used at two types, so the
+# `let` is generalized (Semantics ch. 4, "Binding groups and cycles"; ch. 8, "A new
+# place's first value"; Type System ch. 1). Reaches `AnswerUnbuilt`'s marker "the answer
+# `c` of a place whose constant field reads a late result" on prismc-fd1.
+# Written by Claude (sweep-7, the prismc run), 12 November 2026; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+use Ui.*
+
+tag Pad.Count of Element Nat:
+    name: Text
+
+Second: fn ((t, Nat)) -> Nat
+fn Second ((ignore, k)) = k
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    let Wrap = \|x| ((x, c))
+    Ui.Label($text=$"{Second (Wrap 1)} {Second (Wrap "a")}")                     # 0
+    c <- Pad.Count(name="count {n}")                                    # 1
+    n <- if loud:
+        Ui.Label($text=$"loud")
+        @ 10
+    else:
+        @ 20

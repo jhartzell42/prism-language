@@ -1,0 +1,6 @@
+# The tests of host-answers-a-tag-of-a-family-at-its-type-argument.
+emit Ui.*
+use App.*
+
+test answered_at_the_family_argument, @page:
+    build

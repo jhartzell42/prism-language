@@ -1,0 +1,9 @@
+# The tests of sem-ch05-named-lens-accumulate.
+emit r
+use App.*
+
+check accumulates_through_the_lens:
+    AddTo boot, 3 => Vm(pc=4, regs=Regs(acc=10, x=5), steps=2)
+    Scale boot, 3 => Vm(pc=4, regs=Regs(acc=20, x=5), steps=2)
+    AddTo (AddTo boot, 3), -13 => Vm(pc=4, regs=Regs(acc=-3, x=5), steps=2)
+    boot.regs.acc => 7

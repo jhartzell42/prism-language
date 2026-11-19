@@ -1,0 +1,6 @@
+# The tests of sem-ch05-update-read-through-index.
+emit r
+use App.*
+
+check reads_through_an_index:
+    Carry [[Regs(acc=1, x=0), Regs(acc=2, x=0)]] => [[Regs(acc=1, x=3), Regs(acc=2, x=0)]]

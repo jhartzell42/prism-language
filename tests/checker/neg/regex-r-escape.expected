@@ -1,0 +1,4 @@
+tests/checker/neg/regex-r-escape.prism:2: error[regex]: an unknown escape in a replacement: the escapes are \\, \n, \t, \u{hex} and \/
+    let r = %/(a)/\x/
+                  ^
+1 error

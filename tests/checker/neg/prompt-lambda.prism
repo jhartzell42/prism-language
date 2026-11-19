@@ -1,0 +1,20 @@
+# `prompt-cycle`: a lambda passed to a program's function is read where it is passed,
+# since the function may call it now. `@broken`'s `a` reads `b` only inside the lambda it
+# hands `Apply`, and `b` reads `a`; `@fine`'s lambda reads its own parameter, and checks
+# clean.
+emit Ui.*
+
+Apply: fn Nat, (fn Nat -> Nat) -> Nat
+fn Apply x, F = F x
+
+@broken: @unit
+@broken:
+    let a = Apply 1, \|x| x + b
+    let b = a + 1
+    Ui.Label($text=$"{a}")
+
+@fine: @unit
+@fine:
+    let a = Apply 1, \|x| x + 1
+    let b = a + 1
+    Ui.Label($text=$"{b}")

@@ -1,0 +1,15 @@
+# Derived by hand: the place is born with the kept 0 (no update of the count yet); the count's change in tick 1 is counted twice, `2`, and heard in tick 2 (ruling HO); paths under ruling PL.
+test held_answers
+
+tick 0
+  added:
+    0: Ui.Button(label="add")
+    1/0.[1]/0: Ui.Label(text="level 0")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    1/0.[1]/0: Ui.Label(text="level 2")

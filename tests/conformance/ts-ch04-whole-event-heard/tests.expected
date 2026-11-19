@@ -1,0 +1,20 @@
+# Derived by hand from Type System ch. 4: `Evs` keeps `!inc` itself in its list, so the hold
+# hears each click.
+test an_event_kept_whole_is_heard
+
+tick 0
+  added:
+    0: Ui.Button(label="Inc")
+    1: Ui.Label(text="n 0")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="n 1")
+
+tick 2
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="n 2")

@@ -1,0 +1,27 @@
+# A `rebuild` whose generation ends on a name bound to a bundle that holds a bundle
+# (Semantics ch. 4: a `rebuild`'s block gives its result as any block does; Type System
+# ch. 2, "Bundles": a plain aggregate with functor values inside, nested freely). Written
+# by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Counter: fn Nat -> @((!Click, $Nat))
+fn @Counter page:
+    !more <- Ui.Button($label=$"more on {page}")                  # 0
+    $guests <- 1 then $guests + 1 on !more
+    Ui.Label($text=$"page {page}: {$guests}")                     # 1
+    @ ((!more, $guests))
+
+@Nested: fn Nat -> @((Nat, ((!Click, $Nat))))
+fn @Nested page:
+    both <- @Counter page                                         # 0, 1
+    @ ((page, both))
+
+@main: @unit
+@main:
+    !next <- Ui.Button($label=$"next")                            # 0
+    $page <- 1 then $page + 1 on !next
+    $kept <- rebuild $page:                                      # 1/#g
+        all <- @Nested _                                          # 1/#g/0, 1/#g/1
+        @ all

@@ -1,0 +1,14 @@
+# Derived by hand from Type System ch. 4: `$First` gives the count itself, so the label
+# moves with the click; the list `Wrap` makes always has one element.
+test a_body_passing_its_dynamic_whole
+
+tick 0
+  added:
+    0: Ui.Button(label="Inc")
+    1: Ui.Label(text="first 0 count 1")
+
+tick 1
+  in:
+    0: click
+  changed:
+    1: Ui.Label(text="first 1 count 1")

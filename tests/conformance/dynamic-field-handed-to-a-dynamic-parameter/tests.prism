@@ -1,0 +1,6 @@
+# The tests of dynamic-field-handed-to-a-dynamic-parameter.
+emit Ui.*
+use App.*
+
+test the_field_is_read, @page:
+    build

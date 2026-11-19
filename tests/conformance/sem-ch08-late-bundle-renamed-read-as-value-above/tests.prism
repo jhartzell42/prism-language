@@ -1,0 +1,9 @@
+# The tests of sem-ch08-late-bundle-renamed-read-as-value-above.
+emit Ui.*
+use App.*
+
+test loud, @Page (Loud "x"):
+    build
+
+test soft, @Page Soft:
+    build

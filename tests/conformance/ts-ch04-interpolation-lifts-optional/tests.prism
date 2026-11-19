@@ -1,0 +1,7 @@
+# The tests of ts-ch04-interpolation-lifts-optional.
+emit Ui.*
+use App.*
+
+test it_builds, @page:
+    build
+        => expect Ui.Label(text="hello n1! none")

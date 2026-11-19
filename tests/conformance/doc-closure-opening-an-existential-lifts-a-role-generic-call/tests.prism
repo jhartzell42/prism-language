@@ -1,0 +1,7 @@
+# The tests of doc-closure-opening-an-existential-lifts-a-role-generic-call.
+emit Ui.*
+use App.*
+
+test heard_at_its_role, @page:
+    build
+    click at 0

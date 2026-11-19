@@ -1,0 +1,16 @@
+# A dynamic a function gave back whole, kept by what outlives the read that made it: a
+# `for` row binds `$d` to the element, the count itself (Type System ch. 4, Application:
+# `Wrap` takes the dynamic whole), so the row's label follows the count in the tick it
+# moves, as a label over `$count` would. Written by Claude on the claude-bugs branch;
+# subject to change.
+emit Ui.*
+test mod Tests
+
+Wrap: fn $Nat -> [$Nat]
+fn Wrap $a = [[$a]]
+
+@rows:
+    !inc <- Ui.Button($label=$"Inc")                             # 0
+    $count <- 0 then $count + 1 on !inc
+    for $d <- Wrap $count:
+        Ui.Label($text=$"row {$d}")                              # 1/[0]

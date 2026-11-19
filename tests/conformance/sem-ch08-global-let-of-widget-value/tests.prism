@@ -1,0 +1,6 @@
+# The tests of sem-ch08-global-let-of-widget-value.
+emit Ui.*
+use App.*
+
+test it_builds, @page:
+    build

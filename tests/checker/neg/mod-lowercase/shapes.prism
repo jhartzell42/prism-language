@@ -1,0 +1,3 @@
+# What was a section.
+Unit: fn Nat -> Nat
+fn Unit n = n

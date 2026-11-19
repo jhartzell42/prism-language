@@ -1,0 +1,15 @@
+# A bundle with two `$` parts and nothing else (Type System ch. 2, "Bundles and sparse
+# tuples": "a plain aggregate with functor values inside is a bundle"; Semantics ch. 8,
+# "A new place's first value": each `$` part has a value from the place's build, and "a
+# state is keyed by the element's value"). Written by Claude on the claude-lowering
+# branch; subject to change.
+emit Ui.* | Pad.*
+test mod Tests
+
+tag Pad.Link of Element (($Text, $Nat)):
+    address: Text
+
+@chat: @unit
+@chat:
+    (($state, $peers)) <- Pad.Link(address="chat:7000")          # 0
+    Ui.Label($text=$"{$state}, {$peers} peers")                  # 1

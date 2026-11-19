@@ -1,0 +1,20 @@
+# A field of an associated type an impl chooses as a record: `Item Shelf` is `Crate`, so
+# `(Open shelf).weight` reads the crate's field (Type System ch. 3, "Associated types":
+# "the name at a concrete use shows" the impl's choice). Written by Claude on the
+# claude-bugs branch; subject to change.
+trait ^Box a:
+    type Item
+    Open: fn a -> Item a
+
+type Crate = record:
+    weight: Nat
+
+type Shelf = record:
+    top: Crate
+
+impl ^Box Shelf:
+    type Item = Crate
+    fn Open s = s.top
+
+Weight: fn Shelf -> Nat
+fn Weight shelf = (Open shelf).weight

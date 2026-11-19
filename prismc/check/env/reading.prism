@@ -1,0 +1,778 @@
+# `Check.Env.Reading`, a child module of `Check.Env`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Env.*
+use Check.Env.Names.*
+use Check.Env.Decls.*
+use Check.Env.Traits.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Unify.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+
+# ---------------------------------------------------------------------------------------
+# Reading types
+# ---------------------------------------------------------------------------------------
+
+# What a type is read in: the module, its scope row, the row variables of the signature,
+# and the color unwritten colors take (ch. 5, The color).
+type Cx = record:
+    g: G
+    home: Text
+    scope: Rw
+    rowVars: [Text]
+    unwritten: Col
+derive ^Eq, ^Debug
+
+CxOf: fn G, Text -> Cx
+fn CxOf g, m:
+    let info = Or g.mods[m], (Or g.mods[""], dummyMod)
+    Cx(g=g, home=m, scope=info.emitRw, rowVars=(if info.rowVar == "": [[]] else: [[info.rowVar]]), unwritten=CBound)
+
+let dummyMod = ModInfo(name="", file=0, emitRw=emptyRow, rowVar="", uses=[[]], root=False, tree=emptyModule)
+
+ConvType: unbounded fn Cx, St, Type -> ((Ty, St))
+fn ConvType cx, st, t = match t.kind:
+    TName n, args:
+        let ((base, st2)) = ConvNamed cx, st, n, args, t.span
+        # (`^Document.Reason`'s `^` is its trait's, part of the name and no mark of the
+        # type, ruling AQ; q12 read it as a mark, type-named-as-a-traits-associated-type)
+        if n.sigils == "^" and (Len n.path) >= 2: ((base, st2))
+        else: (((WithMarks n.sigils, base, cx.scope), st2))
+    TSigiled sigils, inner:
+        let ((i, st2)) = ConvType cx, st, inner
+        (((WithMarks (BlueprintMarks sigils, inner, i), i, cx.scope), st2))
+    TArray e, ignore:
+        let ((i, st2)) = ConvType cx, st, e
+        ((TyArray i, st2))
+    TTuple ts:
+        let ((xs, st2)) = ConvTypes cx, st, ts
+        ((TyTuple xs, st2))
+    TGroup x: ConvType cx, st, x
+    TMap k, v:
+        let ((kk, st2)) = ConvType cx, st, k
+        let ((vv, st3)) = ConvType cx, st2, v
+        (((TyMap kk, vv), st3))
+    TFn color, ps, res, prompts:
+        let ((xs, st2)) = ConvTypes cx, st, ps
+        let ((r, st3)) = ConvType cx, st2, res
+        let c = match color:
+            Bounded: cx.unwritten
+            Unbounded: CUnbound
+            ColorVar v: if v.name == "bounded": CBound else: CQ v.name
+        (((TyFn c, xs, r, prompts), st3))
+    TEmit ty, rowT:
+        let ((rw, st2)) = ConvRow cx, st, rowT
+        let inner = update cx:
+            &_.scope <= rw
+        ConvType inner, st2, ty
+    TUnit sigils: (((WithMarks sigils, tUnit, cx.scope), st))
+    TAny tr: match ?ResolveTrait cx.g, cx.home, tr.path:
+        ? k: ((TyAny [[k]], (TraitCollisionAt cx.g, st, cx.home, tr.path, tr.span)))
+        nil: ((TyErr, (Err st, "unknown-name", tr.span, "no trait `^{Dotted tr.path}`")))
+    # `forall a (r: Access). t` (Jimmy's ruling FA): a signature quantifies its variables
+    # either way; `forall` names them, which scopes them over the body (`ForallVars`)
+    # a `forall` inside a type, `type Supplier d = forall o. fn ...`, is a quantified type,
+    # each use a fresh instance (Jimmy's ruling FA); a signature's own `forall` is its
+    # scheme's (`SigType` takes it off)
+    TForall vs, ignore, body:
+        let ((b, st2)) = ConvType cx, st, body
+        (((TyForall (Each vs, \|v| v.name), b), st2))
+    # `any r: t where ...`: the variables renamed to canonical names, so two spellings of one
+    # existential are one type (`ExistsVar`)
+    TExists vars, written, body, bounds:
+        let ((b, st2)) = ConvType cx, st, body
+        let ((bs, st3)) = ConvBounds cx, st2, bounds
+        let names = Each vars, \|v| v.name
+        let canon = Each (Range0 (Len names)), \|i| ExistsVar i, (Or names[i], "")
+        let by = ParamInst names, (Each canon, \|c| TyQ c)
+        let bounds2 = Each bs, \|((v, tr))| (((CanonOf names, v), tr))
+        # each kinded variable's kind, a type (`Access`, `Role d`), under the canonical names
+        let ((kinds, st4)) = Fold written, (([[]], st3)), \|((acc, s)), ((v, kt))|
+            let ((k, s2)) = ConvType cx, s, kt
+            (((Push acc, (((CanonOf names, v), (SubstQ by, k)))), s2))
+        (((TyExists canon, (SubstQ by, b), bounds2, kinds), st4))
+    TAbsent: ((TyErr, (Err st, "unsupported", t.span, "this checker does not implement sparse tuples")))
+    TNonEmpty inner:
+        let ((c, st2)) = ConvType cx, st, inner
+        match c:
+            TyArray ignore: (((NonEmptyOf c), st2))
+            TyMap ignore, ignore: (((NonEmptyOf c), st2))
+            otherwise: ((TyErr, (Err st2, "kind", t.span, "only an array or a map is non-empty; this is `{ShowTy st2, c}`")))
+    THole ignore: ((TyErr, (Err st, "unsupported", t.span, "this checker does not implement higher-kinded traits")))
+    TFamily q, ignore: ((TyErr, (Err st, "kind", t.span, "`{Dotted q.path}.*` is a row, not a type")))
+    TRowUnion ignore: ((TyErr, (Err st, "kind", t.span, "a row is not a type")))
+
+# A bound's variable by its canonical name, if the existential binds it.
+CanonOf: fn [Text], Text -> Text
+fn CanonOf names, v = Fold (Range0 (Len names)), v, \|found, i| if (Or names[i], "") == v: ExistsVar i, v else: found
+
+# An existential's variable by its position, the one name every spelling of it shares.
+# The position decides the variable (`\u{0}x0`); the name as written follows, for messages.
+ExistsVar: fn Nat, Text -> Text
+fn ExistsVar i, name = "\u{0}x{i}\u{0}{name}"
+
+ConvTypes: unbounded fn Cx, St, [Type] -> (([Ty], St))
+fn ConvTypes cx, st, ts = Fold ts, (([[]], st)), \|((acc, s)), x|
+    let ((y, s2)) = ConvType cx, s, x
+    (((Push acc, y), s2))
+
+# A named type applied to its arguments: a variable, a primitive, `Element`, `Elem`, a
+# declared type (an alias expanded), with `kind` for a wrong count.
+ConvNamed: unbounded fn Cx, St, SName, [Type], Range -> ((Ty, St))
+fn ConvNamed cx, st, n, args, span:
+    let name = Dotted n.path
+    if (Len n.path) == 1 and (IsLowerText name):
+        if (Len args) > 0: ((TyErr, (Err st, "unsupported", span, "this checker does not implement higher-kinded traits"))) else: ((TyQ name, st))
+    else: if name == "Element" or name == "Prelude.Element":
+        match Len args:
+            0: (((TyElem cx.scope, tUnit), st))
+            1:
+                let ((o, st2)) = ConvType cx, st, (Or args[0], dummyType)
+                (((TyElem cx.scope, o), st2))
+            2:
+                let ((rw, st2)) = ConvRow cx, st, (Or args[0], dummyType)
+                let ((o, st3)) = ConvType cx, st2, (Or args[1], dummyType)
+                (((TyElem rw, o), st3))
+            otherwise: ((TyErr, (Err st, "kind", span, "`Element` takes a row and a type; here it has {CountWord (Len args)}")))
+    else: if name == "Elem":
+        match Len args:
+            0: ((TyElemAny cx.scope, st))
+            1:
+                let ((rw, st2)) = ConvRow cx, st, (Or args[0], dummyType)
+                ((TyElemAny rw, st2))
+            otherwise: ((TyErr, (Err st, "kind", span, "`Elem` takes a row; here it has {CountWord (Len args)}")))
+    else: if name == "Output":
+        # `Output c`: an output of an element of any tag of row `c` (Semantics ch. 9; rulings
+        # round 12, AQ), the union of its tags' output constructors (`OutputType`)
+        match Len args:
+            0: (((OutputType cx.scope), st))
+            1:
+                let ((rw, st2)) = ConvRow cx, st, (Or args[0], dummyType)
+                (((OutputType rw), st2))
+            otherwise: ((TyErr, (Err st, "kind", span, "`Output` takes a row; here it has {CountWord (Len args)}")))
+    else: if name == "Wired":
+        (((TyCon name, [[]]), st))
+    else: if name == "Instant":
+        ((TyErr, (Err st, "unsupported", span, "this checker does not implement `Instant`")))
+    else: if HasText [["U16", "U32", "U64", "U128", "I8", "I16", "I32", "I64", "I128"]], name:
+        ((TyErr, (Err st, "unsupported", span, "this checker does not implement sized integers other than `U8`")))
+    else: if IsPrimType name:
+        if (Len args) == 0: (((TyCon name, [[]]), st))
+        else: ((TyErr, (Err st, "kind", span, "`{name}` takes no type; here it has {CountWord (Len args)}")))
+    else: if name == "Buffer" or name == "Table":
+        let want = if name == "Buffer": 1 else: 2
+        let ((xs, st2)) = ConvTypes cx, st, args
+        if (Len args) == want: (((TyCon name, xs), st2))
+        else: ((TyErr, (Err st2, "kind", span, "`{name}` takes {CountWord want} types; here it has {CountWord (Len args)}")))
+    # an associated type written through its trait, `^Document.Reason Board Player`
+    # (ruling AQ): the trait the path names but its last, the associated type its last
+    else: if n.sigils == "^" and (Len n.path) >= 2:
+        match ?ResolveTrait cx.g, cx.home, (Take n.path, (Dec (Len n.path))):
+            ? tr: match cx.g.traits[tr]:
+                ? info:
+                    let akey = QualKey info.home, (Or n.path[Dec (Len n.path)], "")
+                    if (Or cx.g.assocNames[akey], "") == tr: AssocTypeAt cx, st, tr, akey, name, args, span
+                    else: ((TyErr, (Err st, "unknown-name", span, "`^{BareName tr}` declares no associated type `{Or n.path[Dec (Len n.path)], ""}`")))
+                nil: ((TyErr, (Err st, "unknown-name", span, "no trait `^{Dotted (Take n.path, (Dec (Len n.path)))}`")))
+            nil: ((TyErr, (Err st, "unknown-name", span, "no trait `^{Dotted (Take n.path, (Dec (Len n.path)))}`")))
+    else:
+        let ((?key, why)) = ResolveType cx.g, cx.home, n.path
+        match ?key:
+            # `Entry K V`, a map's entry (Jimmy's ruling on map entries), is the prelude's
+            # where no declared type takes the name
+            # `Fixed r`, the singleton of a case (Jimmy's ruling VO): its one value is
+            # `Fixed<<r>>`
+            nil: if (name == "Fixed" or name == "Prelude.Fixed") and (Len args) == 1:
+                let ((x, st2)) = ConvIndex cx, st, (Or args[0], dummyType)
+                (((TyCon "Prelude.Fixed", [[x]]), st2))
+            else: if name == "Entry" or name == "Prelude.Entry":
+                let ((xs, st2)) = ConvTypes cx, st, args
+                if (Len args) == 2: (((TyCon "Prelude.Entry", xs), st2))
+                else: ((TyErr, (Err st2, "kind", span, "`Entry` takes two types, the key's and the value's; here it has {CountWord (Len args)}")))
+            else: ((TyErr, (Err st, "unknown-name", span, "no type `{name}`")))
+            ? qk:
+                let ti = Or cx.g.types[qk], dummyTyInfo
+                let st1 = if why == "collision": ErrFix st, "collision", span, "`{name}` is declared by two modules this file reaches by a bare name", "write it qualified, `{qk}`, or rename this file's own" else: st
+                if HasKey cx.g.assocRowNames, qk: ((TyErr, (Err st1, "kind", span, "`{name}` is an associated row, not a type: it stands where a row does, `emit {name} ...`")))
+                # (a bare name that is both a type of the program and an associated type is
+                # the program's type, ruling AQ; given more types than it takes, it was
+                # meant as the associated type, which is written through its trait)
+                else: if (HasKey cx.g.types, qk) and HasKey cx.g.assocNames, qk:
+                    if (Len args) != (Len ti.params) and (Len args) > 0: ((TyErr, (ErrFix st1, "collision", span, "`{name}` here is the program's type `{name}`, which takes {if (Len ti.params) == 0: "no parameter" else: CountWord (Len ti.params)}, given {CountWord (Len args)}", "write the associated type through its trait, as `^{BareName (Or cx.g.assocNames[qk], "")}.{name}`")))
+                    else: ConvNamedType cx, st1, qk, ti, name, args, span
+                else: match cx.g.assocNames[qk]:
+                    # an associated type applied (Type System ch. 3, ch. 5's Traits), a name
+                    # of its trait's module: normalized when unified, at an impl's head
+                    # with its indices after the head, `Request d r` (Type System ch. 6)
+                    ? tr: AssocTypeAt cx, st1, tr, qk, name, args, span
+                    nil: ConvNamedType cx, st1, qk, ti, name, args, span
+
+# An associated type's index: a bare uppercase name that names a constructor is that
+# role constructor as a type (Type System ch. 6: "Each role constructor also names a
+# type", only in type position), even where a type takes the same name; any other type is
+# read as a type.
+ConvIndex: unbounded fn Cx, St, Type -> ((Ty, St))
+fn ConvIndex cx, st, t = match t.kind:
+    TName n, args if (Len args) == 0 and n.sigils == "" and (Len n.path) == 1 and IsUpperText (Or n.path[0], ""):
+        match ?RoleConstructor cx.g, cx.home, (Or n.path[0], ""):
+            ? k: (((TyRole k), (VariantCollisionAt cx, st, (Or n.path[0], ""), t.span)))
+            nil: ConvType cx, st, t
+    # a variant written qualified (`Tally.Viewer`), as a collision's fix says to write it
+    TName n, args if (Len args) == 0 and n.sigils == "" and (Len n.path) > 1 and IsUpperText (Or (?LastOf n.path), ""):
+        match ResolveValue cx.g, cx.home, n:
+            ((? k, ignore)) if HasKey cx.g.caseOwners, k: (((TyRole k), st))
+            otherwise: ConvType cx, st, t
+    otherwise: ConvType cx, st, t
+
+# Whether a path names an associated type.
+IsAssocName: fn Cx, [Text] -> Bool
+fn IsAssocName cx, path = match ResolveType cx.g, cx.home, path:
+    ((? k, ignore)): HasKey cx.g.assocNames, k
+    otherwise: False
+
+# A type argument where the parameter declares no kind (Jimmy's ruling PK, 13 November):
+# a type; a case there is `kind`, its fix the parameter's kind declared.
+UnkindedArg: unbounded fn Cx, St, Type, Text, Text, Range -> ((Ty, St))
+fn UnkindedArg cx, st, arg, what, declared, span:
+    if NamesType cx, arg: ConvType cx, st, arg
+    else: match ?CaseNamed cx, arg:
+        ? c: ((TyErr, (ErrFix st, "kind", span, "`{BareName c}` is a variant of `{BareName (Or (?OwnerOfCase cx, c), "")}`, and {what} declares no kind, so it takes a type", "declare the kind: `{declared}`")))
+        nil: ConvType cx, st, arg
+
+# The case a bare uppercase type argument names, if it names one.
+?CaseNamed: fn Cx, Type -> ?Text
+fn ?CaseNamed cx, t = match t.kind:
+    TName n, args if (Len args) == 0 and n.sigils == "" and (Len n.path) == 1: ?RoleConstructor cx.g, cx.home, (Or n.path[0], "")
+    otherwise: nil
+
+# The kind a case argument's choice is, as a declaration writes it.
+CaseKindShown: fn Cx, Type -> Text
+fn CaseKindShown cx, t = match ?CaseNamed cx, t:
+    ? c: BareName (Or (?OwnerOfCase cx, c), "")
+    nil: "Kind"
+
+# Whether a type argument is a bare name a type of this name answers.
+NamesType: fn Cx, Type -> Bool
+fn NamesType cx, t = match t.kind:
+    TName n, [[]]: match ResolveType cx.g, cx.home, n.path:
+        ((? ignore, ignore2)): True
+        otherwise: False
+    otherwise: True
+
+# The key of the constructor a bare name reaches from module `m`, if it reaches one.
+?RoleConstructor: fn G, Text, Text -> ?Text
+fn ?RoleConstructor g, m, name = match ResolveValue g, m, SName(sigils="", path=[[name]], span=(Range(start=0, end=0, origin=InSource))):
+    # a variant of a payload-free choice, not a record's constructor of the type's own name
+    ((? k, ignore)): if HasKey g.caseOwners, k: ? k else: nil
+    otherwise: nil
+
+# `collision`: a variant written bare that two modules this file reaches declare (the
+# library's `FileRole.Viewer` and a document's own `Viewer`) is never one of them picked
+# silently.
+VariantCollisionAt: fn Cx, St, Text, Range -> St
+fn VariantCollisionAt cx, st, name, span:
+    let keys = Filter (Or (Or cx.g.bare[cx.home], {{}})[name], [[]]), \|k| HasKey cx.g.caseOwners, k
+    if (Len keys) < 2 or Fold keys, False, \|own, k| own or k == (QualKey cx.home, name): st
+    else: ErrFix st, "collision", span, "`{name}` is declared by more than one module this file reaches by a bare name: {Join (Each keys, \|k| "`{k}`"), ", "}", "write the one meant qualified, as `{Or keys[0], name}`"
+
+ConvNamedType: unbounded fn Cx, St, Text, TyInfo, Text, [Type], Range -> ((Ty, St))
+fn ConvNamedType cx, st1, qk, ti, name, args, span:
+    # a type argument may be a variant of a payload-free choice, a type of that choice's kind
+    # (Jimmy's ruling PK): read as `ConvIndex` reads an associated type's index
+    let ((xs, st0)) = Fold (Range0 (Len args)), (([[]], st1)), \|((acc, s)), i|
+        let arg = Or args[i], dummyType
+        # a case where the parameter states its kind; otherwise a type of the name first
+        # (`Stepped ChessGame`, a type and its own case), a case only where no type is
+        let param = Or ti.params[i], ""
+        let kinded = (?KindOf ti, param) != nil
+        # a parameter that takes a row takes it as a row (ruling RR), held as `Elem` of it
+        # in the type's arguments, as a row given to `<<..>>` is (`InstantiateWith`)
+        let ((x, s2)) = if HasText ti.rowParams, param:
+            let ((rw, sr)) = ConvRow cx, s, arg
+            ((TyElemAny rw, sr))
+        else: if kinded: ConvIndex cx, s, arg else: UnkindedArg cx, s, arg, "`{param}` of `{name}`", "type {name} {Join (Each ti.params, \|p| if p == param: "({p}: {CaseKindShown cx, arg})" else: p), " "}", span
+        (((Push acc, x), s2))
+    let st2 = Fold (Range0 (Min (Len xs), (Len ti.params))), st0, \|s, i| KindCheck cx, s, ti, name, (Or ti.params[i], ""), (Or xs[i], TyErr), span
+    if (Len xs) != (Len ti.params):
+        ((TyErr, (Err st2, "kind", span, "`{name}` takes {CountWord (Len ti.params)} type{if (Len ti.params) == 1: "" else: "s"}; here it has {CountWord (Len xs)}")))
+    else: match ti.body:
+        BAlias body: (((SubstQ (ParamInst ti.params, xs), body), st2))
+        BRowKind: (((TyCon qk, xs), st2))
+        otherwise: (((TyCon qk, xs), st2))
+
+# A parameter's stated kind against its argument (Jimmy's ruling PK): a kind is a choice
+# whose variants carry no payload, and its argument one of its cases.
+KindCheck: unbounded fn Cx, St, TyInfo, Text, Text, Ty, Range -> St
+fn KindCheck cx, st, ti, name, param, x, span = match ?KindOf ti, param:
+    nil: st
+    ? k: match k.kind:
+        TName n, [[]]: match ResolveType cx.g, cx.home, n.path:
+            ((? kindKey, ignore)): KindArgCheck cx, st, name, kindKey, (Dotted n.path), x, span
+            otherwise: Err st, "unknown-name", k.span, "no type `{Dotted n.path}` to be a kind"
+        # an associated type is a kind like any type (`(r: Role d)`): its cases are the
+        # impl's choice's, known where the type is
+        TName n, ignore2 if IsAssocName cx, n.path: st
+        otherwise: Err st, "kind", k.span, "a kind is a choice whose variants carry no payload"
+
+?KindOf: fn TyInfo, Text -> ?Type
+fn ?KindOf ti, param = Fold ti.kinds, nil, \|?found, ((n, k))| if n == param: ? k else: ?found
+
+KindArgCheck: unbounded fn Cx, St, Text, Text, Text, Ty, Range -> St
+fn KindArgCheck cx, st, name, kindKey, shown, x, span:
+    let built = Filter (Keys cx.g.ctors), \|c| match cx.g.ctors[c]:
+        ? ci: ci.owner == kindKey
+        nil: False
+    let cases = UnionTexts built, (Filter (Keys cx.g.caseOwners), \|c| cx.g.caseOwners[c] == ? kindKey)
+    let payload = Filter cases, \|c| match cx.g.ctors[c]:
+        ? ci: (Len ci.args) > 0
+        nil: False
+    if (Len payload) > 0: Err st, "kind", span, "`{shown}` is no kind: its variant `{BareName (Or payload[0], "")}` carries a payload"
+    else: match x:
+        TyRole c: if HasText cases, c: st else: ErrFix st, "kind", span, "`{name}` takes a variant of `{shown}`; `{BareName c}` is a variant of `{BareName (Or (?OwnerOfCase cx, c), "")}`", "write one of {Join (Each cases, \|k| "`{BareName k}`"), ", "}"
+        TyQ ignore: st
+        TyRigid ignore: st
+        TyFlex ignore: st
+        TyErr: st
+        otherwise: ErrFix st, "kind", span, "`{name}` takes a variant of `{shown}`; `{ShowTy st, x}` is a type, no variant of `{shown}`", "write one of {Join (Each cases, \|c| "`{BareName c}`"), ", "}"
+
+?OwnerOfCase: fn Cx, Text -> ?Text
+fn ?OwnerOfCase cx, c = match cx.g.ctors[c]:
+    ? ci: ? ci.owner
+    nil: cx.g.caseOwners[c]
+
+let dummyType = Type(kind=TAbsent, span=Range(start=0, end=0, origin=InSource))
+
+ParamInst: fn [Text], [Ty] -> Inst
+fn ParamInst ps, xs = Inst(tys=(Fold (Range0 (Len ps)), {{}}, \|m, i| Insert m, (Or ps[i], ""), (Or xs[i], TyErr)), rows=(RowArgs ps, xs), cols={{}})
+
+# A type's row arguments (ruling RR), each standing for its parameter in each row's place.
+RowArgs: fn [Text], [Ty] -> (Text ==> Tail)
+fn RowArgs ps, xs = Fold (Range0 (Len ps)), {{}}, \|m, i| RowArgInto m, (Or ps[i], ""), (Or xs[i], TyErr)
+
+RowArgInto: fn (Text ==> Tail), Text, Ty -> (Text ==> Tail)
+fn RowArgInto m, p, (TyElemAny rw) = Insert m, p, (TlRow rw)
+fn RowArgInto m, p, other = m
+
+# A row written in a type (`emit` clauses, `Element r o`, `Elem c`).
+ConvRow: unbounded fn Cx, St, Type -> ((Rw, St))
+fn ConvRow cx, st, t:
+    let ((fams, tails, idx, st2)) = RowParts cx, st, t
+    # a row may hold several variables, each decided apart (Jimmy, 13 November, ruling RT)
+    ((Rw(fams=(SortTexts fams), minus=[[]], tail=(UnionTail tails), idx=idx), st2))
+
+RowParts: unbounded fn Cx, St, Type -> (([Text], [Tail], (Text ==> [Ty]), St))
+fn RowParts cx, st, t = match t.kind:
+    TRowUnion ts: Fold ts, (([[]], [[]], {{}}, st)), \|((fs, vs, seen, s)), x|
+        let ((f2, v2, i2, s2)) = RowParts cx, s, x
+        (((Append fs, f2), (Append vs, v2), (MergeIdx seen, i2), s2))
+    TGroup x: RowParts cx, st, x
+    # `unit`, the empty row (`row Lower = unit`: a document with no lower language)
+    TUnit "": (([[]], [[]], {{}}, st))
+    TFamily q, args:
+        let fam = Dotted q.path
+        let st2 = CheckFamily cx.g, st, fam, q.span
+        let ((indices, st3)) = FamilyIndices cx, st2, fam, args, t.span
+        (([[fam]], [[]], (if (Len indices) == 0: {{}} else: Insert {{}}, fam, indices), st3))
+    TName n, [[]]:
+        let name = Dotted n.path
+        if name == "unit": (([[]], [[]], {{}}, st))
+        else: if (Len n.path) == 1 and (IsLowerText name): (([[]], [[(TlQ name)]], {{}}, st))
+        else: if name == "Element": ((cx.scope.fams, (ScopeTails cx.scope.tail), cx.scope.idx, st))
+        else: (([[]], [[]], {{}}, (ErrFix st, "row-single-tag", t.span, "a row names families, not tags: `{name}`", "write `{Dotted (Take n.path, (Dec (Len n.path)))}.*`")))
+    # an associated row at its type, `Lower d` (Type System ch. 3)
+    TName n, [[h]]: match ResolveType cx.g, cx.home, n.path:
+        ((? qk, ignore)) if HasKey cx.g.assocRowNames, qk:
+            let ((ht, st2)) = ConvType cx, st, h
+            (([[]], [[(TlAssoc (Or cx.g.assocRowNames[qk], ""), (BareName qk), ht)]], {{}}, st2))
+        otherwise: (([[]], [[]], {{}}, (Err st, "kind", t.span, "this is not a row")))
+    otherwise: (([[]], [[]], {{}}, (Err st, "kind", t.span, "this is not a row")))
+
+# A family's indices as a row applies it: one per parameter its `family` line declares,
+# each a type or a case of the parameter's kind, or `_` for every variant (`TyEvery`).
+FamilyIndices: unbounded fn Cx, St, Text, [Type], Range -> (([Ty], St))
+fn FamilyIndices cx, st, fam, args, span:
+    let params = match cx.g.famDecls[fam]:
+        ? fd: Each fd.params, \|p| p.name
+        nil: [[]]
+    if (Len args) != (Len params):
+        if (Len params) == 0: (([[]], (ErrFix st, "kind", span, "the family `{fam}` takes no indices; `{fam}.*` has {CountWord (Len args)}", "write `{fam}.*`")))
+        else: (([[]], (ErrFix st, "kind", span, "the family `{fam}` takes {CountWord (Len params)} ind{if (Len params) == 1: "ex" else: "ices"}, `{Join params, " "}`; this row gives {CountWord (Len args)}", "write `{fam}.* {Join params, " "}`, with `_` for every variant of one")))
+    else: Fold args, (([[]], st)), \|((acc, s)), a| match a.kind:
+        THole ignore: (((Push acc, TyEvery), s))
+        otherwise:
+            let p = Or params[Len acc], ""
+            let kinded = match cx.g.famDecls[fam]:
+                ? fd: Fold fd.kinds, False, \|seen, ((n, ignore))| seen or n == p
+                nil: False
+            let ((x, s2)) = if kinded: ConvIndex cx, s, a else: UnkindedArg cx, s, a, "`{p}` of the family `{fam}`", "family {fam} {Join (Each params, \|q| if q == p: "({q}: {CaseKindShown cx, a})" else: q), " "}", a.span
+            (((Push acc, x), s2))
+
+# The tail a scope's own row gives `Element` in a row's place: none when closed.
+ScopeTails: fn Tail -> [Tail]
+fn ScopeTails TlClosed = [[]]
+fn ScopeTails (TlUnion ps) = ps
+fn ScopeTails tl = [[tl]]
+
+# A tail as a row writes it.
+TailWritten: unbounded fn St, Tail -> Text
+fn TailWritten st, tl = match tl:
+    TlQ v: v
+    TlRigid v: v
+    TlAssoc ignore, n, h: "{n} {ShowTyIn st, h, True}"
+    TlFlex n: "r{n}"
+    TlRow whole: ShowRowIn st, whole, False
+    TlUnion ps: Join (Each ps, \|p| TailWritten st, p), " | "
+    TlClosed: ""
+
+# A signature's scheme (ch. 5): its type variables, row variables (those in a row's place,
+# and the module's own `emit r`), its color variables and their joins, its bounds.
+SigScheme: unbounded fn Cx, St, Type, [Bound] -> ((Scheme, St))
+fn SigScheme cx, st, t, bounds:
+    let rowVars = UnionTexts cx.rowVars, (RowVarsOfType t)
+    let cx2 = update cx:
+        &_.rowVars <= rowVars
+        &_.unwritten <= CBound
+    let written = ColorVarsOfType t
+    let ((bs, st1)) = ConvBounds cx, st, bounds
+    let ((ty, defaults, joins, st3)) = SigType cx2, st1, t, written
+    # the variables in the order a `forall` names them, then any other in the order the
+    # type writes them: `<<..>>` at a use gives them in that order (`InstantiateWith`), so
+    # `PendingFrom<<d>>` under `forall d (r: Role d)` gives `d`, never the first variable the
+    # type happens to write
+    let found = Filter (TypeVarsOfType t), \|v| not (HasText rowVars, v)
+    let forallOrder = match t.kind:
+        TForall vs, ignore, ignore2: Filter (Each vs, \|v| v.name), \|v| HasText found, v
+        otherwise: [[]]
+    let tvs = Fold found, forallOrder, \|acc, v| AddText acc, v
+    let cqs = Fold defaults, written, \|acc, v| AddText acc, v
+    # and a variable given where a type's row parameter stands (`Count: fn Seated rest ->
+    # Nat`, `rest` read as a row there, ruling RR)
+    let rowsUsed = UnionTexts (Filter rowVars, \|v| (HasText (RowVarsOfType t), v) or (UsesScope t)), (Filter (UnionTexts (TypeVarsOfType t), rowVars), \|v| TailQIn ty, v)
+    ((Scheme(eqs=[[]], qs=tvs, plainQs=[[]], rqs=rowsUsed, cqs=cqs, cjoins=joins, bounds=bs, ty=ty), st3))
+
+# A signature's unwritten colors (ch. 5, The color; round 3 CD). One mentioning `$`, `!`
+# or `@`, or taking no function, has them bounded. Otherwise every function parameter
+# whose color is unwritten has a color variable of its own, and an unwritten colors inside
+# it is that one; the function's own unwritten color is the join of its function
+# parameters' colors, as if it called each of them: unbounded if one is written
+# `unbounded`, bounded if there is none, the one variable if there is one, and a variable
+# of its own above each of them (a join `lo ≤ hi` of the scheme) if there are several.
+# The result's and the other parameters' unwritten colors are the function's. A function
+# written `bounded fn` has its unwritten parameters bounded. Also the variables it adds
+# and the joins.
+SigType: unbounded fn Cx, St, Type, [Text] -> ((Ty, [Text], [((Text, Text))], St))
+fn SigType cx, st, t, written = match t.kind:
+    TGroup x: SigType cx, st, x, written
+    TForall ignore, ignore2, body: SigType cx, st, body, written
+    TFn color, ps, res, prompts:
+        if (MentionsTime t) or not (TakesClosure t): BoundedSig cx, st, t
+        else: ClosureSig cx, st, color, ps, res, prompts, written
+    otherwise: BoundedSig cx, st, t
+
+BoundedSig: unbounded fn Cx, St, Type -> ((Ty, [Text], [((Text, Text))], St))
+fn BoundedSig cx, st, t:
+    let ((ty, st2)) = ConvType cx, st, t
+    ((ty, [[]], [[]], st2))
+
+ClosureSig: unbounded fn Cx, St, Color, [Type], Type, [Bool], [Text] -> ((Ty, [Text], [((Text, Text))], St))
+fn ClosureSig cx, st, color, ps, res, prompts, written:
+    let ((outerSet, outerW)) = WrittenCol color
+    let boundedOuter = outerSet and outerW == CBound
+    let nDefault = Len (Filter ps, \|p| (IsFnType p) and not (WritesCol (TopColor p)))
+    let names = FreshColNames written, (if boundedOuter: 0 else: nDefault)
+    # Each parameter's color: (False, _) for one that is not a function.
+    let ((pcols, ignore)) = Fold ps, (([[]], 0)), \|((acc, k)), p|
+        if not (IsFnType p): (((Push acc, ((False, CBound))), k))
+        else:
+            let ((set, c)) = WrittenCol (TopColor p)
+            if set: (((Push acc, ((True, c))), k))
+            else: if boundedOuter: (((Push acc, ((True, CBound))), k))
+            else: (((Push acc, ((True, (CQ (Or names[k], "u"))))), k + 1))
+    let vars = Fold pcols, [[]], \|acc, ((ignore, c))| match c:
+        CQ v: AddText acc, v
+        otherwise: acc
+    let anyUnbounded = Fold pcols, False, \|seen, ((ignore, c))| seen or c == CUnbound
+    let spare = FreshColNames (Append written, names), 1
+    let outerName = if outerSet or anyUnbounded or (Len vars) < 2: "" else: Or spare[0], "u"
+    let outer = if outerSet: outerW
+        else: if anyUnbounded: CUnbound
+        else: if (Len vars) == 0: CBound
+        else: if (Len vars) == 1: CQ (Or vars[0], "u")
+        else: CQ outerName
+    let joins = match outer:
+        CQ hi: Each (Filter vars, \|v| v != hi), \|v| ((v, hi))
+        otherwise: [[]]
+    let cxOuter = WithUnwritten cx, outer
+    let ((xs, st2)) = Fold (Range0 (Len ps)), (([[]], st)), \|((acc, s)), i|
+        let p = Or ps[i], res
+        let ((isFn, c)) = Or pcols[i], ((False, CBound))
+        let pcx = if isFn: WithUnwritten cx, c else: cxOuter
+        let ((y, s2)) = ConvType pcx, s, p
+        (((Push acc, y), s2))
+    let ((r, st3)) = ConvType cxOuter, st2, res
+    let added = if outerName == "": names else: Push names, outerName
+    (((TyFn outer, xs, r, prompts), added, joins, st3))
+
+# The color a function type writes, and whether it writes one (`bounded` is bounded).
+WrittenCol: fn Color -> ((Bool, Col))
+fn WrittenCol Bounded = ((False, CBound))
+fn WrittenCol Unbounded = ((True, CUnbound))
+fn WrittenCol (ColorVar v) = if v.name == "bounded": ((True, CBound)) else: ((True, (CQ v.name)))
+
+WithUnwritten: fn Cx, Col -> Cx
+fn WithUnwritten cx, c = update cx:
+    &_.unwritten <= c
+
+WritesCol: fn Color -> Bool
+fn WritesCol Bounded = False
+fn WritesCol ignore = True
+
+# A function type's color, through parentheses (`Bounded` for a type that is not one).
+TopColor: unbounded fn Type -> Color
+fn TopColor t = match t.kind:
+    TFn c, ignore, ignore, prompts: c
+    TGroup x: TopColor x
+    otherwise: Bounded
+
+# `n` color variable names no signature variable takes: `u` for one, `u1`, `u2`, ... for
+# several.
+FreshColNames: unbounded fn [Text], Nat -> [Text]
+fn FreshColNames taken, n:
+    let ((names, ignore)) = Fold (Range0 n), (([[]], 1)), \|((acc, k)), ignore|
+        let k2 = NextFreeCol (Append taken, acc), (if n == 1: 0 else: k)
+        (((Push acc, (SigColName k2)), k2 + 1))
+    names
+
+NextFreeCol: unbounded fn [Text], Nat -> Nat
+fn NextFreeCol taken, k = if HasText taken, (SigColName k): NextFreeCol taken, (k + 1) else: k
+
+SigColName: fn Nat -> Text
+fn SigColName 0 = "u"
+fn SigColName k = "u{k}"
+
+ConvBounds: fn Cx, St, [Bound] -> (([((Text, Text))], St))
+fn ConvBounds cx, st, bounds = Fold bounds, (([[]], st)), \|((acc, s)), b| if b.?equals != nil: ((acc, s)) else: if b.?head != nil: ((acc, (TypeHeadedHere s, b))) else: Fold b.traits, ((acc, s)), \|((a2, s2)), tr| match ?ResolveTrait cx.g, cx.home, tr.path:
+    ? k: (((Push a2, ((b.var.name, k))), (TraitCollisionAt cx.g, s2, cx.home, tr.path, tr.span)))
+    nil: ((a2, (Err s2, "unknown-name", tr.span, "no trait `^{Dotted tr.path}`")))
+
+# A bound on a type that is no variable (`State d: ^X`) is read in a trait's `where`
+# (`TraitHeadBounds`); elsewhere this compiler does not read one yet (R gap).
+TypeHeadedHere: fn St, Bound -> St
+fn TypeHeadedHere st, b = Err st, "unsupported", b.span, "a `where` bound on a type that is no variable is read only in a trait's `where` by this compiler"
+
+# A trait's bounds on types (`trait ^SerializableDocument d where State d: ^SerializableValue`):
+# each head over the trait's parameter, and the trait it asks.
+TraitHeadBounds: unbounded fn Cx, St, [Bound] -> (([((Ty, Text))], St))
+fn TraitHeadBounds cx, st, bounds = Fold bounds, (([[]], st)), \|((acc, s)), b| match b.?head:
+    nil: ((acc, s))
+    ? onType:
+        # `Request d _`: `_` at an index is every case (TyEvery), each impl's every equation
+        let everyName = "every\u{0}hole"
+        let ((h0, s1)) = ConvType cx, s, (HolesNamed onType, everyName)
+        let h = SubstQ Inst(tys=(Insert {{}}, everyName, TyEvery), rows={{}}, cols={{}}), h0
+        Fold b.traits, ((acc, s1)), \|((a2, s2)), tr| match ?ResolveTrait cx.g, cx.home, tr.path:
+            ? k: (((Push a2, ((h, k))), s2))
+            nil: ((a2, (Err s2, "unknown-name", tr.span, "no trait `^{Dotted tr.path}`")))
+
+# A type with each `_` as a variable of this name.
+HolesNamed: fn Type, Text -> Type
+# (written with `Type(..)`, not `update`: the compiler that builds this one wrote a field
+# behind a pointer unwrapped, conformance/sem-ch05-update-recursive-field)
+fn HolesNamed t, name = match t.kind:
+    THole n: Type(kind=(TName SName(sigils="", path=[[name]], span=n.span), [[]]), span=t.span)
+    TName n, args: Type(kind=(TName n, (Each args, \|a| HolesNamed a, name)), span=t.span)
+    TGroup x: Type(kind=(TGroup (HolesNamed x, name)), span=t.span)
+    otherwise: t
+
+# Whether a signature's type writes `$`, `!` or `@` anywhere (ch. 5, The color).
+MentionsTime: unbounded fn Type -> Bool
+fn MentionsTime t = match t.kind:
+    TName n, args: (Contains n.sigils, "$") or (Contains n.sigils, "!") or (Contains n.sigils, "@") or Fold args, False, \|seen, a| seen or MentionsTime a
+    TSigiled s, i: (Contains s, "$") or (Contains s, "!") or (Contains s, "@") or MentionsTime i
+    TUnit s: (Contains s, "$") or (Contains s, "!") or (Contains s, "@")
+    TArray e, ignore: MentionsTime e
+    TTuple ts: Fold ts, False, \|seen, a| seen or MentionsTime a
+    TGroup x: MentionsTime x
+    TMap k, v: (MentionsTime k) or MentionsTime v
+    TFn ignore, ps, res, prompts: (Fold ps, False, \|seen, a| seen or MentionsTime a) or MentionsTime res
+    TEmit ty, ignore: True
+    otherwise: False
+
+TakesClosure: unbounded fn Type -> Bool
+fn TakesClosure t = match t.kind:
+    TFn ignore, ps, ignore, prompts: Fold ps, False, \|seen, p| seen or IsFnType p
+    otherwise: False
+
+IsFnType: unbounded fn Type -> Bool
+fn IsFnType t = match t.kind:
+    TFn ignore, ignore, ignore, prompts: True
+    TGroup x: IsFnType x
+    otherwise: False
+
+# Whether a type writes a blueprint or bare element that takes the scope's row.
+UsesScope: unbounded fn Type -> Bool
+fn UsesScope t = match t.kind:
+    TForall ignore, ignore2, body: UsesScope body
+    # a blueprint whose type writes its own row (`$@(@unit emit Ui.* | rest)`) uses none
+    TName n, args if (Contains n.sigils, "@") and (Len args) == 1 and WritesEmitIn (Or args[0], dummyType): UsesScope (Or args[0], dummyType)
+    TSigiled s, i if (Contains s, "@") and WritesEmitIn i: UsesScope i
+    TName n, args: (Contains n.sigils, "@") or ((Dotted n.path) == "Element" and (Len args) < 2) or ((Dotted n.path) == "Elem" and (Len args) == 0) or Fold args, False, \|seen, a| seen or UsesScope a
+    TSigiled s, i: (Contains s, "@") or UsesScope i
+    TUnit s: Contains s, "@"
+    TArray e, ignore: UsesScope e
+    TTuple ts: Fold ts, False, \|seen, a| seen or UsesScope a
+    TGroup x: UsesScope x
+    TMap k, v: (UsesScope k) or UsesScope v
+    TFn ignore, ps, res, prompts: (Fold ps, False, \|seen, a| seen or UsesScope a) or UsesScope res
+    TEmit ty, rowT: UsesScope rowT
+    otherwise: False
+
+# The lowercase names a type writes in a row's place.
+RowVarsOfType: unbounded fn Type -> [Text]
+fn RowVarsOfType t = match t.kind:
+    # a signature's own `forall` names some of its variables; its rows stand in its body
+    # either way (Jimmy's ruling FA)
+    TForall ignore, ignore2, body: RowVarsOfType body
+    TName n, args:
+        let name = Dotted n.path
+        let own = if (name == "Element" and (Len args) == 2) or (name == "Elem" and (Len args) == 1): RowNamesIn (Or args[0], dummyType) else: [[]]
+        let rest = if name == "Element" and (Len args) == 2: Drop args, 1 else: if name == "Elem": [[]] else: args
+        Fold rest, own, \|acc, a| UnionTexts acc, (RowVarsOfType a)
+    TSigiled ignore, i: RowVarsOfType i
+    TArray e, ignore: RowVarsOfType e
+    TTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (RowVarsOfType a)
+    TGroup x: RowVarsOfType x
+    TMap k, v: UnionTexts (RowVarsOfType k), (RowVarsOfType v)
+    TFn ignore, ps, res, prompts: Fold ps, (RowVarsOfType res), \|acc, a| UnionTexts acc, (RowVarsOfType a)
+    TEmit ty, rowT: UnionTexts (RowVarsOfType ty), (RowNamesIn rowT)
+    otherwise: [[]]
+
+RowNamesIn: unbounded fn Type -> [Text]
+fn RowNamesIn t = match t.kind:
+    TName n, [[]]: if (Len n.path) == 1 and (IsLowerText (Dotted n.path)): [[Dotted n.path]] else: [[]]
+    TRowUnion ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (RowNamesIn a)
+    TGroup x: RowNamesIn x
+    otherwise: [[]]
+
+# The indices a row's families are applied to (`Seat.* d r` gives `d`, `r`).
+IndexTypes: unbounded fn Type -> [Type]
+fn IndexTypes t = match t.kind:
+    TFamily ignore, args: args
+    TRowUnion ts: Fold ts, [[]], \|acc, x| Append acc, (IndexTypes x)
+    TGroup x: IndexTypes x
+    otherwise: [[]]
+
+# The lowercase type variables a type writes, in order of first appearance (Q-RW8).
+TypeVarsOfType: unbounded fn Type -> [Text]
+fn TypeVarsOfType t = match t.kind:
+    # a signature's own `forall` names its variables (Jimmy's ruling FA)
+    TForall ignore, ignore2, body: TypeVarsInto [[]], body
+    otherwise: TypeVarsInto [[]], t
+
+TypeVarsInto: unbounded fn [Text], Type -> [Text]
+fn TypeVarsInto acc, t = match t.kind:
+    TName n, args:
+        let name = Dotted n.path
+        let here = if (Len n.path) == 1 and (IsLowerText name) and (Len args) == 0: AddText acc, name else: acc
+        let rest = if name == "Element" and (Len args) == 2: Drop args, 1 else: if name == "Elem": [[]] else: args
+        # a row's family indices (`Element (Seat.* d r) o`) write type variables too
+        let rowArgs = if name == "Element" or name == "Elem": Fold (Take args, 1), [[]], \|a, x| Append a, (IndexTypes x) else: [[]]
+        Fold (Append rowArgs, rest), here, \|a, x| TypeVarsInto a, x
+    TSigiled ignore, i: TypeVarsInto acc, i
+    TArray e, ignore: TypeVarsInto acc, e
+    TTuple ts: Fold ts, acc, \|a, x| TypeVarsInto a, x
+    TGroup x: TypeVarsInto acc, x
+    TMap k, v: TypeVarsInto (TypeVarsInto acc, k), v
+    TFn ignore, ps, res, prompts: TypeVarsInto (Fold ps, acc, \|a, x| TypeVarsInto a, x), res
+    TEmit ty, rowT: Fold (IndexTypes rowT), (TypeVarsInto acc, ty), \|a, x| TypeVarsInto a, x
+    TNonEmpty x: TypeVarsInto acc, x
+    # a `forall` inside a type binds its variables there (Jimmy's ruling FA)
+    TForall vs, ignore, body: Fold (TypeVarsInto [[]], body), acc, \|a, v| if Fold vs, False, \|seen, b| seen or b.name == v: a else: AddText a, v
+    otherwise: acc
+
+# Where each lowercase type variable of a type is first written.
+TypeVarPlaces: unbounded fn [((Text, Range))], Type -> [((Text, Range))]
+fn TypeVarPlaces acc, t = match t.kind:
+    TName n, args:
+        let name = Dotted n.path
+        let known = Fold acc, False, \|seen, ((v, ignore))| seen or v == name
+        let here = if (Len n.path) == 1 and (IsLowerText name) and (Len args) == 0 and not known: Push acc, ((name, t.span)) else: acc
+        let rest = if name == "Element" and (Len args) == 2: Drop args, 1 else: if name == "Elem": [[]] else: args
+        # a row's family indices (`Element (Seat.* d r) o`) write type variables too
+        let rowArgs = if name == "Element" or name == "Elem": Fold (Take args, 1), [[]], \|a, x| Append a, (IndexTypes x) else: [[]]
+        Fold (Append rowArgs, rest), here, \|a, x| TypeVarPlaces a, x
+    TSigiled ignore, i: TypeVarPlaces acc, i
+    TArray e, ignore: TypeVarPlaces acc, e
+    TTuple ts: Fold ts, acc, \|a, x| TypeVarPlaces a, x
+    TGroup x: TypeVarPlaces acc, x
+    TMap k, v: TypeVarPlaces (TypeVarPlaces acc, k), v
+    TFn ignore, ps, res, prompts: TypeVarPlaces (Fold ps, acc, \|a, x| TypeVarPlaces a, x), res
+    TEmit ty, rowT: Fold (IndexTypes rowT), (TypeVarPlaces acc, ty), \|a, x| TypeVarPlaces a, x
+    TNonEmpty x: TypeVarPlaces acc, x
+    # a `forall`'s variables are the signature's own (Jimmy's ruling FA)
+    TForall ignore, ignore2, body: TypeVarPlaces acc, body
+    otherwise: acc
+
+ColorVarsOfType: unbounded fn Type -> [Text]
+fn ColorVarsOfType t = match t.kind:
+    TForall ignore, ignore2, body: ColorVarsOfType body
+    TFn (ColorVar v), ps, res, prompts:
+        let inner = Fold ps, (ColorVarsOfType res), \|acc, a| UnionTexts acc, (ColorVarsOfType a)
+        if v.name == "bounded": inner else: AddText inner, v.name
+    TFn ignore, ps, res, prompts: Fold ps, (ColorVarsOfType res), \|acc, a| UnionTexts acc, (ColorVarsOfType a)
+    TName ignore, args: Fold args, [[]], \|acc, a| UnionTexts acc, (ColorVarsOfType a)
+    TSigiled ignore, i: ColorVarsOfType i
+    TArray e, ignore: ColorVarsOfType e
+    TTuple ts: Fold ts, [[]], \|acc, a| UnionTexts acc, (ColorVarsOfType a)
+    TGroup x: ColorVarsOfType x
+    TMap k, v: UnionTexts (ColorVarsOfType k), (ColorVarsOfType v)
+    TEmit ty, ignore: ColorVarsOfType ty
+    otherwise: [[]]
+
+
+# Whether a type writes its row with `emit` at its top, under groups and a blueprint's `@`.
+# A stack ending in `@` before a parenthesized blueprint that writes its own row is that
+# blueprint: `$@(@played emit Seat.* ChessGame Player | rest)` is a dynamic blueprint of
+# `played` (documents book ch. 5, "Seats: a record of live maps"), the parentheses there
+# to hold the `emit`; the `@` outside names the layer the parentheses give.
+BlueprintMarks: unbounded fn Text, Type, Ty -> Text
+fn BlueprintMarks sigils, inner, converted = match converted:
+    TyAt ignore, ignore2 if (HasSuffix sigils, "@") and WritesEmitIn inner: Or (?BeforeSuffix sigils, "@"), sigils
+    otherwise: sigils
+
+WritesEmitIn: unbounded fn Type -> Bool
+fn WritesEmitIn t = match t.kind:
+    TEmit ignore, ignore2: True
+    TGroup x: WritesEmitIn x
+    otherwise: False
+
+# An associated type applied (Type System ch. 3, ch. 5's Traits): normalized when unified,
+# at an impl's head with its indices after the head, `Request d r` (Type System ch. 6).
+AssocTypeAt: unbounded fn Cx, St, Text, Text, Text, [Type], Range -> ((Ty, St))
+fn AssocTypeAt cx, st1, tr, qk, name, args, span:
+    let more = match cx.g.traits[tr]:
+        ? ti: Or ti.assocParams[BareName qk], 0
+        nil: 0
+    if (Len args) == 1 + more:
+        let ((a, st2)) = ConvType cx, st1, (Or args[0], dummyType)
+        let kindedAt = match cx.g.traits[tr]:
+            ? ti: Or ti.assocKinded[BareName qk], [[]]
+            nil: [[]]
+        let ((indices, st3)) = Fold (Drop args, 1), (([[]], st2)), \|((xs, s)), arg|
+            let ((x, s2)) = if Or kindedAt[Len xs], False: ConvIndex cx, s, arg else: UnkindedArg cx, s, arg, "this index of `{name}`", "type {BareName qk} (r: {CaseKindShown cx, arg})", span
+            (((Push xs, x), s2))
+        (((TyAssoc tr, (BareName qk), a, indices), st3))
+    else: if more == 0: ((TyErr, (Err st1, "kind", span, "the associated type `{name}` takes one type; here it has {CountWord (Len args)}")))
+    else: ((TyErr, (Err st1, "kind", span, "the associated type `{name}` takes {CountWord (1 + more)} types, its trait's and {if more == 1: "an index" else: "{CountWord more} indices"}; here it has {CountWord (Len args)}")))

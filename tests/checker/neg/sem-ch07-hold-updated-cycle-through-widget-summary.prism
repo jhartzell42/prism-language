@@ -1,0 +1,25 @@
+# `prompt-cycle`, through a widget whose result is a hold's update: `@Echo` steps a hold
+# on its argument and gives the hold's update event, which fires in the tick of the step
+# (Semantics ch. 7, R3), so `!back` fires in the tick `!step` does, and `!step` merges
+# `!back`: one press loops within a tick.
+# Promptness is part of a function's type, and the check is local (Jimmy, 13 November,
+# ruling PT): `@Echo`'s signature says `prompt`, and the loop is found in `@host` from
+# that type alone, never by reading `@Echo`'s body. Without the word, `@Echo` is refused at
+# its own body (neg/prompt-unmarked-widget-function).
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+# A plain function is always prompt (ruling PT); only a widget function says it in its type.
+emit Ui.*
+
+@Echo: fn prompt !Nat -> @!Nat
+fn @Echo !step:
+    $seen <- 0 then $seen + 1 on !step
+    @ (!Updated $seen)
+
+@host: @unit
+@host:
+    !press <- Ui.Button($label=$"press")
+    !back <- @Echo !step
+    let !step = (1 on !press) <| !back
+    $last <- 0 then !step
+    Ui.Label($text=$"{$last}")

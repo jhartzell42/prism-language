@@ -1,0 +1,20 @@
+# Derived by hand from Semantics ch. 7, "The outputs" (the root's result is an output of the tick) and Type System ch. 2, "Bundles and sparse tuples", by the coordinator's ruling for sem-ch07-root-bundle-result (a root's bundle is told part by part): each `$` part at the build and in each tick it moves, one `result:` line a part, in the bundle's order. The first click moves both parts, the second the second part only. The book does not say how two parts told in one tick are printed: that is this test's belief.
+test a_root_ends_on_two_dynamics
+
+tick 0
+  added:
+    0: Ui.Button(label="go")
+    1: Ui.Button(label="flip")
+  result: 0
+  result: "0/0"
+
+tick 1
+  in:
+    0: click
+  result: 1
+  result: "1/0"
+
+tick 2
+  in:
+    1: click
+  result: "1/10"

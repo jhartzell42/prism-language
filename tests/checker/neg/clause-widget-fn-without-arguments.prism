@@ -1,0 +1,17 @@
+# A widget that takes no arguments has one block: a second `fn @Twice:` defines the name
+# twice (Jimmy's ruling ZD: "this is a name defined twice"), as a second bare `@Twice:`
+# block does (neg clause-widget-without-arguments). The checker passes it today. Expected
+# diagnostic derived by hand from the ruling. Written by Claude on the claude-bugs branch;
+# subject to change.
+emit Ui.*
+use Ui.*
+
+@Twice: @unit
+fn @Twice:
+    Ui.Label($text=$"one")
+fn @Twice:
+    Ui.Label($text=$"two")
+
+@page: @unit
+@page:
+    @Twice

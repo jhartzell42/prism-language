@@ -1,0 +1,7 @@
+# Every NaN one value: declarations of app.prism.
+emit Ui.*
+use App.*
+use Ui.*
+
+test nan_one, @nans:
+    build

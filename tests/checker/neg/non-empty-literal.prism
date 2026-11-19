@@ -1,0 +1,10 @@
+# A non-empty literal is not empty, and a plain array is no `[a]+`: the one implicit
+# conversion goes the other way (Type System ch. 2, "Collections": "there is no
+# subtyping"). Written by Claude on the claude-bugs branch; subject to change.
+First: fn [Nat]+ -> Nat
+fn First xs = Len xs
+
+Bad: fn Nat -> Nat
+fn Bad n:
+    let none = [[]]+
+    First [[n]]

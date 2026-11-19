@@ -1,0 +1,22 @@
+# A widget function parameter whose argument is a lambda that applies a widget, applied in
+# the widget's block to function values (Semantics ch. 8: a widget function parameter is
+# applied at the block's next positions, as the widget it names would be; Type System
+# ch. 2: a lambda is a function value, and it closes over the block's names). Written by
+# Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Shower: fn Text, (fn Nat -> Nat) -> @unit
+fn @Shower label, F:
+    Ui.Label($text=$"{label} {F 1}")
+
+@Use: fn (fn (fn Nat -> Nat) -> @unit) -> @unit
+fn @Use W:
+    W (\|x| x + 1)
+    W (\|x| x * 5)
+
+@main: @unit
+@main:
+    let label = "shows"
+    @Use (\|F| @Shower label, F)

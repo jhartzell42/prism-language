@@ -1,0 +1,25 @@
+# `?Match`: declarations of sem-appB-regex-match.
+emit r
+use App.*
+
+check anchored:
+    Spans (?Match %/[a-z]+/, (Cut "12abc3", 2)) => "2-5"
+    Spans (?Match %/[a-z]+/, (Cut "12abc3", 1)) => "nil"
+    Spans (?Match %/[a-z]+/, (Cut "12abc3", 3)) => "3-5"
+    Spans (?Match %/a*/, (Cut "baa", 0)) => "0-0"
+    Spans (?Match %/a*/, (Cut "baa", 1)) => "1-3"
+    Spans (?Match %/b/, (Cut "ab", 2)) => "nil"
+    Spans (?Match %/(é)+/, (Cut "aéé", 1)) => "1-5 3-5"
+    Stepped (?Ident (Cut "12ab_9 x", 2)) => "ab_9@6"
+    Stepped (?Ident (Cut "12ab_9 x", 0)) => "nil"
+    Around (?Match %/b+/, (Cut "abbc", 1)) => "a|bb|c"
+
+check context:
+    Spans (?Match %/^a/, (Cut "ba", 1)) => "nil"
+    Spans (?Match %/\Aa/, (Cut "ba", 1)) => "nil"
+    Spans (?Match %/^a/m, (Cut "b\na", 2)) => "2-3"
+    Spans (?Match %/^a/m, (Cut "ba", 1)) => "nil"
+    Spans (?Match %/\bb/, (Cut "ab", 1)) => "nil"
+    Spans (?Match %/\bb/, (Cut "a b", 2)) => "2-3"
+    Spans (?Match %/\Bb/, (Cut "ab", 1)) => "1-2"
+    Spans (?Match %/a$/, (Cut "ba", 1)) => "1-2"

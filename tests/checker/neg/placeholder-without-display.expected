@@ -1,0 +1,5 @@
+tests/checker/neg/placeholder-without-display.prism:6: error[no-impl]: no impl of `^Display` for `[Nat]`, which a placeholder wants
+    fn Listed xs = "all: {xs}"
+                          ^^
+  fix: write `{Debug xs}` for the text a program debugs with, or give the type an `impl ^Display`
+1 error

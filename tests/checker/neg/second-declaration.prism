@@ -1,0 +1,26 @@
+# `collision`: a second declaration of one name never replaces the first. A trait's method
+# signed twice, a record's field named twice, a choice's constructor named twice or by two
+# types of one module, a tag's field named twice, a tag declared twice. Written by Claude
+# on the claude-bugs branch; subject to change.
+trait ^Box a:
+    Open: fn a -> Nat
+    Open: fn a -> Text
+
+type Pair = record:
+    left: Nat
+    left: Text
+
+type Coin = choice:
+    Heads
+    Heads
+
+type Side = choice:
+    Heads
+    Tails
+
+tag Dial.Knob of Element !Nat:
+    $label: Text
+    $label: Nat
+
+tag Dial.Knob of Element:
+    $label: Text

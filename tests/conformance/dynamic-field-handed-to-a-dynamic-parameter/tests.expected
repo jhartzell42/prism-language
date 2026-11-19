@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 4: the widget's label is its own place 0 inside the page's place 0 (ruling PL); it reads the field's value, 3.
+test the_field_is_read
+
+tick 0
+  added:
+    0/0: Ui.Label(text="n is 3")

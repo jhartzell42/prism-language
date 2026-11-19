@@ -1,0 +1,12 @@
+# The tests of sem-ch07-root-bundle-result.
+emit Ui.*
+use App.*
+
+test a_root_ends_on_a_bundle, @main:
+    build
+        => returns "ready"
+    click at 0
+        => expect Ui.Label(text="1")
+        => fired 1
+    click at 0
+        => fired 2

@@ -1,0 +1,30 @@
+# A supplier a widget gives back, bound below the `@Host` line that is given it: a block's
+# lines may stand in any order (Semantics ch. 4, "Binding groups and cycles": the order
+# decides positions and nothing else), so `Supply` is the rank-2 supplier it is above it
+# too. The checker refused it (`refinement-escape`) where the same lines in the other
+# order check. Written by Claude, 15 November 2026, on the claude-self-hosting branch.
+emit Ui.* | Pad.*
+
+tag Pad.Gauge of Element $?Nat:
+    name: Text
+
+@meter: @unit emit Ui.* | Pad.*
+@meter:
+    $?level <- Pad.Gauge(name="tank")
+    Ui.Label($text=$"level {Or $?level, 0}")
+
+type Supplier = forall o. fn Path, prompt Element (Ui.* | Pad.*) o -> @o
+
+SupplierFrom: fn $Nat -> Supplier
+fn SupplierFrom $n = \|path, prompt element| match element:
+    Pad.Gauge(..): @ ? $n
+    otherwise: @Element element
+
+@Counting: fn prompt $(Path ==> $Elem (Ui.* | Pad.*)) -> @Supplier
+fn @Counting $doc:
+    @ SupplierFrom (Size $doc)
+
+@host: @unit
+@host:
+    ((ignore, $doc)) <- @Host @meter, Supply
+    Supply <- @Counting $doc

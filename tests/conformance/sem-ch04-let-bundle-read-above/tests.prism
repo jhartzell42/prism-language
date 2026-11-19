@@ -1,0 +1,7 @@
+# The tests of sem-ch04-let-bundle-read-above.
+emit Ui.*
+use App.*
+
+test the_bundle_is_read_above, @main:
+    build
+    click at 0

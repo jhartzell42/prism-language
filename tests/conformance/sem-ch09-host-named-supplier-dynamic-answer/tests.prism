@@ -1,0 +1,8 @@
+# The tests of sem-ch09-host-named-supplier-dynamic-answer.
+emit Ui.* | Pad.*
+use App.*
+
+test a_parameter_dynamic_answers, @host:
+    build
+    click at 0
+    compute

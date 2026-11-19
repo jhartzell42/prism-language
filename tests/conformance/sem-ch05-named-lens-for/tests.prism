@@ -1,0 +1,9 @@
+# The tests of sem-ch05-named-lens-for.
+emit r
+use App.*
+
+check for_over_a_lens:
+    (Extend fixture).stoppage => [[3, 6]]
+    (Extend fixture).score => Score(home=1, away=0)
+    (HomeGoals fixture).halves => [[Score(home=11, away=0), Score(home=10, away=3)]]
+    fixture.stoppage => [[2, 4]]

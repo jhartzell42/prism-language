@@ -1,0 +1,8 @@
+# One edit: declarations of the program beside it.
+emit Ui.*
+use App.*
+use Ui.*
+
+test one_edit, @rows:
+    build
+    click at 0

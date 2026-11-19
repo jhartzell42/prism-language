@@ -1,0 +1,6 @@
+# The tests of indexed-associated-type-through-generic-function.
+emit Ui.*
+use App.*
+
+test kept_at_each_role, @page:
+    build

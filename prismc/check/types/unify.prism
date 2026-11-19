@@ -1,0 +1,615 @@
+# `Check.Types.Unify`, a child module of `Check.Types`.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit r
+use Check.Types.*
+use Check.Types.Recording.*
+use Check.Types.Schemes.*
+use Check.Types.Colors.*
+use Syntax.*
+use Syntax.Decls.*
+use Syntax.Lexer.*
+use Syntax.Lexer.Chars.*
+use Syntax.Lexer.Layout.*
+use Syntax.Lexer.Words.*
+use Syntax.Lexer.Literals.*
+use Syntax.Lexer.Templates.*
+use Syntax.Lexer.Corpus.*
+use Check.Errors.*
+use Check.Typed.*
+use Check.Typed.Print.*
+
+# ---------------------------------------------------------------------------------------
+# Unification
+# ---------------------------------------------------------------------------------------
+
+# Unify the expected type with the found one at `span`. A failure that is a plain
+# disagreement reports `mismatch` with the two whole types; the special failures
+# (`occurs`, `mark-stack`, `row-lacks`) report themselves.
+Unify: unbounded fn St, Ty, Ty, Range -> St
+fn Unify st, expected, found, span:
+    let outerBefore = st.unifying
+    let entered = update st:
+        &_.unifying <= ((expected, found))
+    let ((verdict, st2a)) = UnifyIn entered, expected, found, span
+    let st2 = update st2a:
+        &_.unifying <= outerBefore
+    if verdict == "mismatch":
+        let e = ShowTy st2, expected
+        let f = ShowTy st2, found
+        if e == f: Err st2, "mismatch", span, "expected `{ShowTyQ st2, expected}`, found `{ShowTyQ st2, found}`"
+        else: Err st2, "mismatch", span, "expected `{e}`, found `{f}`"
+    else: if verdict == "" and not (PromptsFitTy st2, (Zonk st2, expected), (Zonk st2, found)):
+        Err st2, "mismatch", span, "expected `{ShowTy st2, expected}`, found `{ShowTy st2, found}`"
+    else: st2
+
+# Whether a value of type `found` stands where `expected` is wanted by its functions'
+# `prompt` marks (ruling PT), the types already one: a function with fewer marks stands
+# where one with more is wanted, as a bounded function where an unbounded one is; a
+# function's parameters the other way round. Unification leaves the marks alone.
+PromptsFitTy: unbounded fn St, Ty, Ty -> Bool
+fn PromptsFitTy st, expected, found = match ((expected, found)):
+    (((TyFn ignore, ps, r1, wanted), (TyFn ignore2, qs, r2, marked))):
+        let own = Fold (Range0 (Len marked)), True, \|ok, i| ok and ((not (Or marked[i], False)) or Or wanted[i], False)
+        own and (PromptsFitAll st, qs, ps) and PromptsFitTy st, r1, r2
+    (((TyCon ignore, xs), (TyCon ignore2, ys))): PromptsFitAll st, xs, ys
+    ((TyTuple xs, TyTuple ys)): PromptsFitAll st, xs, ys
+    ((TyArray x, TyArray y)): PromptsFitTy st, x, y
+    (((TyMap k1, v1), (TyMap k2, v2))): (PromptsFitTy st, k1, k2) and PromptsFitTy st, v1, v2
+    (((TySig ignore, x), (TySig ignore2, y))): PromptsFitTy st, x, y
+    (((TyAt x, ignore), (TyAt y, ignore2))): PromptsFitTy st, x, y
+    (((TyElem ignore, x), (TyElem ignore2, y))): PromptsFitTy st, x, y
+    otherwise: True
+
+PromptsFitAll: unbounded fn St, [Ty], [Ty] -> Bool
+fn PromptsFitAll st, xs, ys = Fold (Range0 (Len xs)), True, \|ok, i| ok and PromptsFitTy st, (Or xs[i], TyErr), (Or ys[i], TyErr)
+
+# A type with its names qualified, for two types that print alike.
+ShowTyQ: unbounded fn St, Ty -> Text
+fn ShowTyQ st, t = match Zonk st, t:
+    TyCon n, [[]]: n
+    TyCon n, args: "({n}{Concat (Each args, \|a| " {ShowTyQ st, a}")})"
+    TySig s, i: "{s}{ShowTyQ st, i}"
+    TyArray e:
+        let inner = ShowTyQ st, e
+        if (HasPrefix inner, "["): "[ {inner} ]" else: "[{inner}]"
+    TyMap k, v: "({ShowTyQ st, k} ==> {ShowTyQ st, v})"
+    TyAt i, rw: "@{ShowTyQ st, i} emit {ShowRowIn st, rw, True}"
+    # (a function's parameters and result, so a blueprint inside shows its row)
+    TyFn c, ps, res, prompts: "({ShowCol c}fn {Join (Each (Range0 (Len ps)), \|i| "{if Or prompts[i], False: "prompt " else: ""}{ShowTyQ st, (Or ps[i], TyErr)}"), ", "} -> {ShowTyQ st, res})"
+    other: ShowTy st, other
+
+# Unify, and say whether it worked, with no diagnostic for a plain mismatch: for the
+# application rule, which reports its own message.
+TryUnify: unbounded fn St, Ty, Ty, Range -> ((Bool, St))
+fn TryUnify st, expected, found, span:
+    let ((verdict, st2)) = UnifyIn st, expected, found, span
+    ((verdict == "", st2))
+
+# "" when the two unify, "mismatch" when they do not, "reported" when a special error was
+# already added.
+UnifyIn: unbounded fn St, Ty, Ty, Range -> ((Text, St))
+fn UnifyIn st0, expected, found, span:
+    # an associated type's index that its impl takes as a row (`type Seats rest = Seated
+    # rest`, ruling RR) at a variable still open is a row first (`LinkAssocRows`)
+    let st = LinkAssocRows (LinkAssocRows st0, span, expected), span, found
+    let e = NormAssoc st, (Walk st, expected)
+    let f = NormAssoc st, (Walk st, found)
+    # A variable meeting a waiting associated type is bound to it, so the projection stays
+    # in the variable's type (a local `let`'s scheme keeps `Item a`); only two types that
+    # are not variables wait as an equation.
+    if (IsWaitingAssoc st, e) or (IsWaitingAssoc st, f):
+        # equal once their variables are followed (two calls' `Item t4` and `Item t7`,
+        # both variables bound to `t2`): an associated type is not injective, so its
+        # arguments are never unified for it
+        if (Zonk st, e) == (Zonk st, f): (("", st))
+        else: if (IsFlexVar st, e) or (IsFlexVar st, f): UnifyHeads st, e, f, span
+        else: (("", (Defer st, e, f, span)))
+    else: UnifyHeads st, e, f, span
+
+# An associated type's indices at an impl that matches its head: an index the impl's
+# equation names by a variable standing as a row's tail in what it chooses (`type Seats
+# rest = Seated rest`, ruling RR), where the application gives a variable still open (a
+# signature's `Seats d zz` instantiated), is bound to a fresh row as `Elem` of it, as a
+# constructor's row parameter is (`LinkRowParams`), so the choice takes the row.
+LinkAssocRows: unbounded fn St, Range, Ty -> St
+fn LinkAssocRows st, span, t = match Walk st, t:
+    TyAssoc tr, n, a, indices if (Len indices) > 0: match Walk st, a:
+        TyFlex ignore: st
+        TyRigid ignore: st
+        otherwise:
+            let whole = Zonk st, a
+            Fold st.assocImpls, st, \|s, ai| if ai.cls != tr or ai.name != n or (Len ai.indices) != (Len indices): s else: match ?MatchHead ai.head, whole, {{}}:
+                ? ignore2: Fold (Range0 (Len indices)), s, \|s2, i| match ((ai.indices[i], (Walk s2, (Or indices[i], TyErr)))):
+                    ((? (IndexVar v), TyFlex k)) if TailQIn ai.value, v:
+                        let ((rw, s3)) = FreshRow s2, [[]]
+                        let ((ignore3, s4)) = BindVar s3, k, (TyElemAny rw), span
+                        s4
+                    otherwise: s2
+                nil: s
+    otherwise: st
+
+# An associated type normalizes before comparing (ch. 5, Traits): `Quotient Float` is
+# `Float`, `Quotient Int` is `?Int` (Type System ch. 3); at a flexible variable it waits
+# for the variable to be bound. What an impl chooses is walked and normalized again: at
+# `Pair a`, `type Item = a` chooses the head's argument, which at `Pair(one="a", ...)` is
+# a variable already bound to `Text` (and a choice may itself be an associated type).
+NormAssoc: unbounded fn St, Ty -> Ty
+fn NormAssoc st, t:
+    let n = NormAssocOnce st, t
+    if n == t: t else: NormAssoc st, (Walk st, n)
+
+NormAssocOnce: unbounded fn St, Ty -> Ty
+fn NormAssocOnce st, t = match t:
+    TyAssoc tr, "Quotient", a, [[]] if tr == quotientTrait: match Walk st, a:
+        TyCon "Float", [[]]: tFloat
+        TyCon n, [[]]: if n == "Nat" or n == "Int" or n == "U8": TySig "?", (TyCon n, [[]]) else: ImplAssoc st, tr, "Quotient", (Walk st, a), [[]], t
+        otherwise: ImplAssoc st, tr, "Quotient", (Walk st, a), [[]], t
+    TyAssoc tr, n, a, indices: ImplAssoc st, tr, n, (Walk st, a), (Each indices, \|i| Zonk st, i), t
+    other: other
+
+# A constructor's row parameters after instantiating (`CtorScheme`): each one's type
+# argument is the row itself, so `TallySeats OneEach Ui.*` gives its fields `Ui.*` as `rest`.
+LinkRowParams: unbounded fn St, Scheme, Inst, Range -> St
+fn LinkRowParams st, sc, inst, span = Fold sc.rqs, st, \|s, q| match ((inst.tys[q], inst.rows[q])):
+    ((? t, ? tail)): Unify s, t, (TyElemAny (Rw(fams=[[]], minus=[[]], tail=tail, idx={{}}))), span
+    otherwise: s
+
+# A scoped kind kept at a trait's parameter (`assoc Role @d`) read at an impl's head: the
+# kind the impl that matches the head gives (`Role (Tallied o)` is `TallyRole`); any other
+# kind as it is.
+KindAtParameter: unbounded fn St, Text, Text, Ty -> Text
+fn KindAtParameter st, written, param, head:
+    let parts = SplitOn written, "\u{0}"
+    if (Len parts) != 3 or (Or parts[0], "") != "assoc" or (Or parts[2], "") != "@{param}": written
+    else:
+        let assoc = Or parts[1], ""
+        Fold st.assocImpls, written, \|found, ai| if found != written or ai.name != assoc or (Len ai.indices) > 0: found else: match ?MatchHead ai.head, head, {{}}:
+            ? ignore: match ai.value:
+                TyCon k, [[]]: k
+                otherwise: found
+            nil: found
+
+# A scoped kind as the choice it names: an associated type's at a named type (`Side Box`,
+# kept by `AssocKindKey`) is the type the one impl that matches gives (`BoxSide`).
+KindThroughImpl: unbounded fn St, Text -> Text
+fn KindThroughImpl st, written:
+    let parts = SplitOn written, "\u{0}"
+    if (Len parts) != 3 or (Or parts[0], "") != "assoc": written
+    else:
+        let assoc = Or parts[1], ""
+        let head = TyCon (Or parts[2], ""), [[]]
+        Fold st.assocImpls, written, \|found, ai| if found != written or ai.name != assoc or (Len ai.indices) > 0: found else: match ?MatchHead ai.head, head, {{}}:
+            ? ignore: match ai.value:
+                TyCon k, [[]]: k
+                otherwise: found
+            nil: found
+
+# An associated type at a known head: the type the one impl of its trait whose head
+# matches chooses (one-way matching, `?MatchHead`: a named type's head, a collection's or
+# a tuple's, as the impl itself is found), its variables what the match gives them (ch.
+# 5: "the impl's `?Int` before comparing"); at a variable, at a type no head matches yet,
+# or with no impl choosing it, the application as it is. An associated type with indices
+# (Type System ch. 6) takes the equation whose indices match: a role constructor matches
+# itself, an equation's variable any index; an index that is no role constructor where an
+# equation wants one leaves the type waiting, equal only to itself.
+ImplAssoc: unbounded fn St, Text, Text, Ty, [Ty], Ty -> Ty
+fn ImplAssoc st, tr, n, a, indices, t = match a:
+    TyFlex ignore: t
+    TyRigid ignore: t
+    otherwise:
+        let whole = Zonk st, a
+        let found = Fold st.assocImpls, AssocMissed, \|found, ai| if found != AssocMissed or ai.cls != tr or ai.name != n: found else: match ?MatchHead ai.head, whole, {{}}:
+            ? tys: match MatchIndices ai.indices, indices, tys:
+                AssocMatched all: AssocChose (SubstQ Inst(tys=all, rows={{}}, cols={{}}), ai.value)
+                AssocWaits: AssocWaits
+                AssocMissed: AssocMissed
+                AssocChose chosen: AssocChose chosen
+            nil: found
+        match found:
+            AssocChose chosen: chosen
+            otherwise: t
+
+# Where an associated type's equations leave it: one chose this type; one matches once an
+# index is known; none matches.
+type AssocFound = choice:
+    AssocChose Ty
+    AssocMatched (Text ==> Ty)
+    AssocWaits
+    AssocMissed
+derive ^Eq, ^Debug
+
+# An equation's indices against an application's: each variable bound to its index, each
+# role constructor the same constructor.
+MatchIndices: fn [AssocIndex], [Ty], (Text ==> Ty) -> AssocFound
+fn MatchIndices pats, indices, m0 = if (Len pats) != (Len indices): AssocMissed else: Fold (Range0 (Len pats)), (AssocMatched m0), \|acc, i| match acc:
+    AssocMatched m: match (((Or pats[i], (IndexVar "")), (Or indices[i], TyErr))):
+        ((IndexVar v, x)): AssocMatched (Insert m, v, x)
+        ((IndexRole k, TyRole r)): if k == r: AssocMatched m else: AssocMissed
+        otherwise: AssocWaits
+    other: other
+
+# One-way matching of an impl head (with `TyQ` variables) against a type.
+?MatchHead: unbounded fn Ty, Ty, (Text ==> Ty) -> ?(Text ==> Ty)
+fn ?MatchHead pat, t, m = match ((pat, t)):
+    ((TyQ v, x)): match m[v]:
+        ? y: if y == x: ? m else: nil
+        nil: ? (Insert m, v, x)
+    (((TyCon a, xs), (TyCon b, ys))): if a == b and (Len xs) == (Len ys): ?MatchAll xs, ys, m else: nil
+    ((TyTuple xs, TyTuple ys)): if (Len xs) == (Len ys): ?MatchAll xs, ys, m else: nil
+    ((TyArray x, TyArray y)): ?MatchHead x, y, m
+    (((TyMap k1, v1), (TyMap k2, v2))): ?MatchAll [[k1, v1]], [[k2, v2]], m
+    (((TySig s1, i1), (TySig s2, i2))): if s1 == s2: ?MatchHead i1, i2, m else: nil
+    # (an alias's existential read back by its name, `AliasOrShown`: associated types,
+    # roles and rigid variables as they stand)
+    (((TyAssoc t1, n1, a1, ix1), (TyAssoc t2, n2, a2, ix2))): if t1 == t2 and n1 == n2 and (Len ix1) == (Len ix2): ?MatchAll (Append [[a1]], ix1), (Append [[a2]], ix2), m else: nil
+    ((TyRole a, TyRole b)): if a == b: ? m else: nil
+    ((TyRigid a, TyRigid b)): if a == b: ? m else: nil
+    otherwise: nil
+
+?MatchAll: unbounded fn [Ty], [Ty], (Text ==> Ty) -> ?(Text ==> Ty)
+fn ?MatchAll xs, ys, m = Fold (Range0 (Len xs)), (? m), \|?acc, i| match ?acc:
+    ? mm: ?MatchHead (Or xs[i], TyErr), (Or ys[i], TyErr), mm
+    nil: nil
+
+IsWaitingAssoc: unbounded fn St, Ty -> Bool
+fn IsWaitingAssoc st, t = match t:
+    TyAssoc ignore, ignore, a, indices: (IsFlexVar st, a) or Fold indices, False, \|b, i| b or IsFlexVar st, i
+    TyExists ignore, b, ignore2, kinds: IsFlexVar st, b
+    TyForall ignore, b: IsFlexVar st, b
+    otherwise: False
+
+Defer: fn St, Ty, Ty, Range -> St
+fn Defer st, e, f, span = update st:
+    &_.deferred <= Push &_.deferred, Waiting(expected=e, found=f, span=span, file=st.file, outer=st.unifying, ?guestRow=st.?guestRow)
+
+# The waiting equations, retried once their variables are bound, each in its own file.
+RetryDeferred: unbounded fn St -> St
+fn RetryDeferred st:
+    let waiting = st.deferred
+    let cleared = update st:
+        &_.deferred <= [[]]
+    let done = Fold waiting, cleared, \|s, w|
+        let there = update s:
+            &_.file <= w.file
+        RetryOne there, w
+    update done:
+        &_.file <= st.file
+
+# One waiting equation again: a disagreement now reports the whole types the equation
+# came from (`!Never`, not the `Never` inside), and, for an element's field, a note that
+# names the guest and what its associated type is there.
+RetryOne: unbounded fn St, Waiting -> St
+fn RetryOne st, w:
+    let ((verdict, st2)) = UnifyIn st, w.expected, w.found, w.span
+    if verdict != "mismatch": st2
+    else:
+        let ((outerExpected, outerFound)) = w.outer
+        let shownE = ShowTy st2, (NormAssocDeep st2, (Zonk st2, (if outerExpected == TyErr: w.expected else: outerExpected)))
+        let shownF = ShowTy st2, (NormAssocDeep st2, (Zonk st2, (if outerFound == TyErr: w.found else: outerFound)))
+        # (two types that print alike are shown with their names qualified and their
+        # rows, `ShowTyQ`)
+        let message = if shownE != shownF: "expected `{shownE}`, found `{shownF}`" else: "expected `{ShowTyQ st2, (if outerExpected == TyErr: w.expected else: outerExpected)}`, found `{ShowTyQ st2, (if outerFound == TyErr: w.found else: outerFound)}`"
+        match w.?guestRow:
+            ? gr: AddDiag st2, (DiagNote "mismatch", st2.file, w.span, message, (GuestNote st2, gr, w))
+            nil: Err st2, "mismatch", w.span, message
+
+# A type with every associated type in it normalized, for a message.
+NormAssocDeep: unbounded fn St, Ty -> Ty
+fn NormAssocDeep st, t = match NormAssoc st, t:
+    TySig sg, i: TySig sg, (NormAssocDeep st, i)
+    TyCon c, args: TyCon c, (Each args, \|a| NormAssocDeep st, a)
+    TyTuple ts: TyTuple (Each ts, \|a| NormAssocDeep st, a)
+    TyArray e: TyArray (NormAssocDeep st, e)
+    TyMap k, v: TyMap (NormAssocDeep st, k), (NormAssocDeep st, v)
+    other: other
+
+# The note of a field's waiting associated type: the guest's row, and the associated
+# type as written there with what it is.
+GuestNote: unbounded fn St, GuestRow, Waiting -> Text
+fn GuestNote st, gr, w:
+    let ((outerExpected, outerFound)) = w.outer
+    let ?assoc = Fold [[w.expected, w.found, outerExpected, outerFound]], nil, \|?found, t| match ?found:
+        ? f: ? f
+        nil: ?AssocUnder st, t
+    let emitted = "{gr.familyName}.*{Concat (Each gr.indices, \|i| " {ShowTyIn st, (Zonk st, i), True}")}"
+    match ?assoc:
+        ? t: "this guest emits `{emitted}`, and `{ShowTyIn st, t, False}` is `{ShowTy st, (NormAssoc st, t)}`"
+        nil: "this guest emits `{emitted}`"
+
+# An associated type under any sigils (`!(Request Count Watcher)`).
+?AssocUnder: unbounded fn St, Ty -> ?Ty
+fn ?AssocUnder st, t = match Walk st, t:
+    # (followed, never normalized: `Zonk` would give the `Never` it is)
+    TyAssoc tr, n, a, indices: ? (TyAssoc tr, n, (Zonk st, a), (Each indices, \|i| Zonk st, i))
+    TySig ignore, i: ?AssocUnder st, i
+    otherwise: nil
+
+# The program's end: an equation still waiting has a variable nothing decided, and an
+# equation never checked would let any type through (`ambiguous`, never dropped).
+Undecided: unbounded fn St -> St
+fn Undecided st0:
+    let st = RetryDeferred st0
+    let left = Fold st.deferred, st, \|s, w|
+        let there = update s:
+            &_.file <= w.file
+        # an equation inside an expression already `ambiguous` (the variable that would
+        # decide it is reported) is that one report
+        let covered = Fold s.diags, False, \|seen, d| seen or (d.code == "ambiguous" and d.file == w.file and d.span.start <= w.span.start and w.span.end <= d.span.end)
+        if covered: s
+        else: ErrFix there, "ambiguous", w.span, "nothing decides the associated type in `{ShowTy s, w.expected}` = `{ShowTy s, w.found}`", "annotate the value's type"
+    update left:
+        &_.deferred <= [[]]
+        &_.file <= st.file
+
+UnifyHeads: unbounded fn St, Ty, Ty, Range -> ((Text, St))
+fn UnifyHeads st, e, f, span:
+    match ((e, f)):
+        ((TyErr, ignore)): (("", st))
+        ((ignore, TyErr)): (("", st))
+        ((TyFlex a, TyFlex b)): if a == b: (("", st)) else: (("", (MergeVars st, a, b)))
+        ((TyFlex a, t)): BindVar st, a, t, span
+        ((t, TyFlex b)): BindVar st, b, t, span
+        ((TyRigid a, TyRigid b)): if a == b: (("", st)) else: (("mismatch", st))
+        ((TyQ a, TyQ b)): if a == b: (("", st)) else: (("mismatch", st))
+        (((TyCon a, xs), (TyCon b, ys))):
+            if a == b and (Len xs) == (Len ys): UnifyAll st, xs, ys, span
+            else: (("mismatch", st))
+        (((TyFn c1, ps, r1, ignore), (TyFn c2, qs, r2, ignore))):
+            if (Len ps) == (Len qs):
+                let ((v, st2)) = UnifyCol st, c1, c2
+                if v != "": ((v, st2)) else: UnifyAll st2, (Push ps, r1), (Push qs, r2), span
+            else: (("mismatch", st))
+        ((TyTuple xs, TyTuple ys)): if (Len xs) == (Len ys): UnifyAll st, xs, ys, span else: (("mismatch", st))
+        ((TyArray x, TyArray y)): UnifyIn st, x, y, span
+        (((TyMap k1, v1), (TyMap k2, v2))): UnifyAll st, [[k1, v1]], [[k2, v2]], span
+        (((TySig s1, i1), (TySig s2, i2))): if s1 == s2: UnifyIn st, i1, i2, span else: (("mismatch", st))
+        (((TyAt i1, r1), (TyAt i2, r2))):
+            let ((v, st2)) = UnifyIn st, i1, i2, span
+            if v != "": ((v, st2)) else: UnifyRow st2, r1, r2, span
+        (((TyElem r1, o1), (TyElem r2, o2))):
+            let ((v, st2)) = UnifyRow st, r1, r2, span
+            if v != "": ((v, st2)) else: UnifyIn st2, o1, o2, span
+        ((TyElemAny r1, TyElemAny r2)): UnifyRow st, r1, r2, span
+        (((TyAssoc t1, n1, a1, ix1), (TyAssoc t2, n2, a2, ix2))): if t1 == t2 and n1 == n2 and (Len ix1) == (Len ix2): UnifyAll st, (Append [[a1]], ix1), (Append [[a2]], ix2), span else: (("mismatch", st))
+        ((TyRole r1, TyRole r2)): if r1 == r2: (("", st)) else: (("mismatch", st))
+        ((TyAny xs, TyAny ys)): if (SortTexts xs) == (SortTexts ys): (("", st)) else: (("mismatch", st))
+        # two existentials are one type when their bodies are, variable by canonical
+        # variable, and their bounds agree
+        (((TyExists xs, b1, bs1, ignore), (TyExists ys, b2, bs2, ignore2))):
+            # one existential however its variables are written: `ys` renamed to `xs`
+            let renamed = Each ys, \|y| AtPosition xs, y
+            let by = Inst(tys=(Map (Each (Range0 (Len ys)), \|i| (((Or ys[i], ""), (TyQ (Or renamed[i], "")))))), rows={{}}, cols={{}})
+            let bs2r = Each bs2, \|((v, tr))| (((AtPosition xs, v), tr))
+            if (Len xs) == (Len ys) and bs1 == bs2r: UnifyIn st, b1, (SubstQ by, b2), span else: (("mismatch", st))
+        # two quantified types are one when their bodies are, variable by variable
+        (((TyForall xs, b1), (TyForall ys, b2))):
+            if (Len xs) != (Len ys): (("mismatch", st))
+            else:
+                let by = Inst(tys=(Map (Each (Range0 (Len ys)), \|i| (((Or ys[i], ""), (TyQ (Or xs[i], "")))))), rows={{}}, cols={{}})
+                UnifyIn st, b1, (SubstQ by, b2), span
+        # a quantified type against one that is not: the quantified one at fresh rigid
+        # variables (a value given where `forall o. ..` is wanted works at every `o`; one
+        # of that type used is used at one)
+        (((TyForall vs, b), other)):
+            let ((opened, st2)) = OpenForall st, vs, b
+            UnifyIn st2, opened, other, span
+        ((other, (TyForall vs, b))):
+            let ((opened, st2)) = OpenForall st, vs, b
+            UnifyIn st2, other, opened, span
+        otherwise: (("mismatch", st))
+
+# A quantified type's body at fresh rigid variables (`ForallRigidName`).
+OpenForall: unbounded fn St, [Text], Ty -> ((Ty, St))
+fn OpenForall st, vs, b:
+    let by = Inst(tys=(Map (Each vs, \|v| ((v, (TyRigid (ForallRigidName v, st.next)))))), rows={{}}, cols={{}})
+    let st2 = update st:
+        &_.next += 1
+    (((SubstQ by, b), st2))
+
+# The rigid variable a quantified type's variable is opened at: its name and a number,
+# apart from every signature's; `IsForallRigid` tells one (the lowering holds such a
+# variable's values packed, as a quantified type's, ruling FA).
+ForallRigidName: fn Text, Nat -> Text
+fn ForallRigidName v, n = "{v}#forall{n}"
+
+IsForallRigid: fn Text -> Bool
+fn IsForallRigid name = Contains name, "#forall"
+
+# Two existential variables at one position (`\u{0}x0\u{0}r`, `\u{0}x0\u{0}s`).
+AtPosition: fn [Text], Text -> Text
+fn AtPosition xs, y = Or (Filter xs, \|x| SameExistsVar x, y)[0], y
+
+SameExistsVar: fn Text, Text -> Bool
+fn SameExistsVar a, b = (Or (SplitOn a, "\u{0}")[1], a) == (Or (SplitOn b, "\u{0}")[1], b)
+
+# A family's indices in two rows: `_` (`TyEvery`) stands for every variant and meets any.
+UnifyIndices: unbounded fn St, [Ty], [Ty], Range -> ((Text, St))
+fn UnifyIndices st, xs, ys, span = if (Len xs) != (Len ys): (("mismatch", st)) else: Fold (Range0 (Len xs)), (("", st)), \|((v, s)), i| if v != "": ((v, s)) else: match (((Or xs[i], TyErr), (Or ys[i], TyErr))):
+    ((TyEvery, ignore)): ((v, s))
+    ((ignore, TyEvery)): ((v, s))
+    ((x, y)): UnifyIn s, x, y, span
+
+# The indices of these families.
+IdxOf: fn (Text ==> [Ty]), [Text] -> (Text ==> [Ty])
+fn IdxOf idx, fams = Fold fams, {{}}, \|acc, f| match idx[f]:
+    ? xs: Insert acc, f, xs
+    nil: acc
+
+UnifyAll: unbounded fn St, [Ty], [Ty], Range -> ((Text, St))
+fn UnifyAll st, xs, ys, span = Fold (Range0 (Len xs)), (("", st)), \|((v, s)), i| if v != "": ((v, s)) else: UnifyIn s, (Or xs[i], TyErr), (Or ys[i], TyErr), span
+
+# Two variables become one: the merged variable is plain-headed if either was, at the lower
+# level, and keeps a binder's name.
+MergeVars: fn St, Nat, Nat -> St
+fn MergeVars st, a, b:
+    let ia = InfoOf st, a
+    let ib = InfoOf st, b
+    let merged = VInfo(plain=(ia.plain or ib.plain), level=(Min ia.level, ib.level), name=(if ib.name == "": ia.name else: ib.name))
+    update st:
+        &_.tys <= Insert &_.tys, a, (TyFlex b)
+        &_.infos <= Insert &_.infos, b, merged
+
+BindVar: unbounded fn St, Nat, Ty, Range -> ((Text, St))
+fn BindVar st, n, t, span:
+    let info = InfoOf st, n
+    let stack = StackOf st, t
+    if HasNat (FreeVars st, t), n:
+        (("reported", (Err st, "occurs", span, "`t{n}` would contain itself: `t{n} = {ShowTy st, t}`")))
+    else: if info.plain and stack != "":
+        if info.name != "":
+            let marks = MarksOf info.name
+            let whole = "{marks}{ShowTyIn st, (Zonk st, t), True}"
+            let at = Or st.binderAt[n], span
+            let st2 = ErrFix st, "mark-stack", at, "`{info.name}` has type `{whole}`, whose stack is `{marks}{stack}`; the name shows `{marks}`", "rename to `{marks}{stack}{DropPrefix info.name, marks}`"
+            # Reported once, at the binder: the name then has the type its value has, so
+            # neither its binder nor its uses report it again.
+            (("", update (LowerLevels st2, (Append (FreeVars st2, t), (FreeColVars st2, t)), info.level):
+                &_.tys <= Insert &_.tys, n, t))
+        else: (("mismatch", st))
+    else:
+        let lowered = LowerLevels st, (Append (FreeVars st, t), (FreeColVars st, t)), info.level
+        (("", update lowered:
+            &_.tys <= Insert &_.tys, n, t))
+
+# The marks a name was written with: `$?user` has `$?`.
+MarksOf: fn Text -> Text
+fn MarksOf name:
+    let c = update Front name:
+        while ? ((ignore, next)) <- ?Step &_ if IsMarkChar (CharAt &_):
+            &_ <= next
+    Before c
+
+IsMarkChar: fn Text -> Bool
+fn IsMarkChar c = c == "$" or c == "!" or c == "@" or c == "?" or c == "~" or c == "&"
+
+LowerLevels: fn St, [Nat], Nat -> St
+fn LowerLevels st, vs, level = Fold vs, st, \|s, v| LowerOne s, v, level
+
+LowerOne: fn St, Nat, Nat -> St
+fn LowerOne s, v, level:
+    let i = InfoOf s, v
+    if i.level <= level: s
+    else: update s:
+        &_.infos <= Insert &_.infos, v, VInfo(plain=i.plain, level=level, name=i.name)
+
+# Rows (ch. 5, Rows): families as the unit, one tail, Rémy's algorithm with families for
+# labels; a family put into a tail that lacks it is `row-lacks`.
+UnifyRow: unbounded fn St, Rw, Rw, Range -> ((Text, St))
+fn UnifyRow st, a0, b0, span:
+    let a = WalkRow st, a0
+    let b = WalkRow st, b0
+    # a family both rows name has one instance: its indices unify, `_` with any
+    let ((vi, sti)) = Fold (Keys a.idx), (("", st)), \|((v, s)), f| if v != "": ((v, s)) else: match b.idx[f]:
+        ? ys: UnifyIndices s, (Or a.idx[f], [[]]), ys, span
+        nil: ((v, s))
+    if vi != "": ((vi, sti)) else: UnifyRowRest sti, a, b, span
+
+# The rows' families and tails (Rémy's algorithm), their indices already unified.
+UnifyRowRest: unbounded fn St, Rw, Rw, Range -> ((Text, St))
+fn UnifyRowRest st, a, b, span:
+    let onlyA = MinusTexts a.fams, b.fams
+    let onlyB = MinusTexts b.fams, a.fams
+    match ((a.tail, b.tail)):
+        ((TlClosed, TlClosed)): if (Len onlyA) == 0 and (Len onlyB) == 0: (("", st)) else: (("mismatch", st))
+        ((TlFlex x, TlFlex y)):
+            if x == y:
+                if (Len onlyA) == 0 and (Len onlyB) == 0: (("", st)) else: (("mismatch", st))
+            else:
+                let lacking = UnionTexts (UnionTexts (LacksOf st, x), (LacksOf st, y)), (UnionTexts a.fams, b.fams)
+                let ((fresh, st2)) = FreshRow st, lacking
+                let ((v1, st3)) = BindRow st2, x, (Rw(fams=onlyB, minus=[[]], tail=fresh.tail, idx=(IdxOf b.idx, onlyB))), span
+                if v1 != "": ((v1, st3)) else: BindRow st3, y, (Rw(fams=onlyA, minus=[[]], tail=fresh.tail, idx=(IdxOf a.idx, onlyA))), span
+        ((TlFlex x, other)): if (Len onlyA) == 0: BindRow st, x, (Rw(fams=onlyB, minus=b.minus, tail=other, idx=(IdxOf b.idx, onlyB))), span else: (("mismatch", st))
+        ((other, TlFlex y)): if (Len onlyB) == 0: BindRow st, y, (Rw(fams=onlyA, minus=a.minus, tail=other, idx=(IdxOf a.idx, onlyA))), span else: (("mismatch", st))
+        ((TlRigid x, TlRigid y)): if x == y and (Len onlyA) == 0 and (Len onlyB) == 0: (("", st)) else: (("mismatch", st))
+        ((TlQ x, TlQ y)): if x == y and (Len onlyA) == 0 and (Len onlyB) == 0: (("", st)) else: (("mismatch", st))
+        # one associated row at one type is one row, equal only to itself until known
+        (((TlAssoc t1, n1, h1), (TlAssoc t2, n2, h2))): if t1 == t2 and n1 == n2 and (Len onlyA) == 0 and (Len onlyB) == 0: UnifyIn st, h1, h2, span else: (("mismatch", st))
+        # two rows of several variables are one when they hold the same ones (ruling RT)
+        ((TlUnion xs, TlUnion ys)): if (Len onlyA) == 0 and (Len onlyB) == 0 and (Len xs) == (Len ys) and Fold xs, True, \|all, x| all and HasTail ys, x: (("", st)) else: (("mismatch", st))
+        otherwise: (("mismatch", st))
+
+# A field access whose record nothing had decided yet: the receiver, the field, the type
+# its value takes, where, and the records that have such a field.
+type FieldQ = record:
+    recv: Ty
+    field: Text
+    result: Ty
+    span: Range
+    file: Nat
+    owners: [Text]
+    # The marks the access shows and where the field's name stands, checked against the
+    # field's stack once the record is known (gap FM); none for a reference path's step.
+    ?marks: ((Text, Range))
+derive ^Eq, ^Debug
+
+AskField: fn St, Ty, Text, Ty, Range, [Text] -> St
+fn AskField st, recv, field, result, span, owners = update st:
+    &_.fieldQs <= Push &_.fieldQs, FieldQ(recv=recv, field=field, result=result, span=span, file=&_.file, owners=owners, ?marks=nil)
+
+# The waiting field read whose type is `result` checks its marks when it is read (gap FM).
+MarkLastField: fn St, Ty, Text, Range -> St
+fn MarkLastField st, result, marks, at = update st:
+    &_.fieldQs <= Each &_.fieldQs, \|q| if q.result == result and q.?marks == nil: update q:
+        &_.marks <= ? ((marks, at))
+    else: q
+
+# An argument whose outer layer was still a variable where it met a plain or variable
+# parameter (ch. 5, When an outer layer is still a variable): taken whole there, and asked
+# about at the end of the definition.
+AskLayer: fn St, Ty, Range, Text -> St
+fn AskLayer st, t, span, fname = update st:
+    &_.layerQs <= Push &_.layerQs, ((t, span, fname))
+
+# The end of a definition: an argument whose layer is still a variable, or turned out to
+# be a dynamic or an event after it was taken whole, is `layer-unknown`.
+LayerQuestions: unbounded fn St -> St
+fn LayerQuestions st:
+    let qs = st.layerQs
+    let cleared = update st:
+        &_.layerQs <= [[]]
+    Fold qs, cleared, \|s, ((t, span, fname))|
+        let h = HeadSigil s, t
+        if (IsFreeHeaded s, t) or h == "$" or h == "!":
+            ErrFix s, "layer-unknown", span, "the layer of this argument to `{fname}` is not known here", "say it where the value is made: a name whose marks declare the layer (`let $x = ...`), `<<T>>` at the application that made it, or a signature on the enclosing `let`"
+        else: s
+
+# A row variable made from a signature's remembers the signature's name for it.
+NameRow: fn St, Tail, Text -> St
+fn NameRow st, (TlFlex n), q = update st:
+    &_.rowNames <= Insert &_.rowNames, n, q
+fn NameRow st, ignore, ignore = st
+
+RowName: fn St, Nat -> Text
+fn RowName st, n = Or st.rowNames[n], "r{n}"
+
+LacksOf: fn St, Nat -> [Text]
+fn LacksOf st, n = Or st.lacks[n], [[]]
+
+BindRow: unbounded fn St, Nat, Rw, Range -> ((Text, St))
+fn BindRow st, n, rw, span:
+    let bad = InterTexts (LacksOf st, n), rw.fams
+    if (Len bad) > 0:
+        let fam = Or bad[0], ""
+        (("reported", (ErrFix st, "row-lacks", span, "`{RowName st, n} | {fam}.*` promises `{RowName st, n}` has no `{fam}` tags", "answer the `{fam}` tags before this point, or widen the row")))
+    else:
+        let st2 = match rw.tail:
+            TlFlex m: update st:
+                &_.lacks <= Insert &_.lacks, m, (UnionTexts (LacksOf st, m), (LacksOf st, n))
+            otherwise: st
+        (("", update st2:
+            &_.rows <= Insert &_.rows, n, rw))
+
+# A family both rows name: the child's indices within the scope's, where the scope's `_`
+# takes every case (Part III ch. 6; Jimmy's ruling AF).
+IndicesIncluded: unbounded fn St, Rw, Rw, Range -> St
+fn IndicesIncluded st, sub, sup, span = Fold (Keys sub.idx), st, \|s, f| match sup.idx[f]:
+    nil: s
+    ? ys: IndexIncluded s, f, (Or sub.idx[f], [[]]), ys, span
+
+IndexIncluded: unbounded fn St, Text, [Ty], [Ty], Range -> St
+fn IndexIncluded st, f, xs, ys, span = Fold (Range0 (Len xs)), st, \|s, i| match (((Or xs[i], TyErr), (Or ys[i], TyErr))):
+    ((ignore, TyEvery)): s
+    ((TyEvery, y)): ErrFix s, "row-outside", span, "a child that emits `{f}.*` at every variant of an index in a scope that emits it at `{ShowTy s, y}`", "emit `{f}.*` at `_` in the scope too, or the child at `{ShowTy s, y}`"
+    ((x, y)): Unify s, x, y, span
+

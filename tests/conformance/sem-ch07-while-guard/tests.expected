@@ -1,0 +1,12 @@
+# Derived by hand from D6 as ruled: Counts, Count 3 and Count 0 entered; the shrinking `while` turns within the cycle.
+test the_guard_ends_the_loop
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 3 ticks, 1 to 3
+
+tick 3
+  changed:
+    1: Ui.Label(text="6 0")

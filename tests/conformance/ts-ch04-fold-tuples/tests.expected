@@ -1,0 +1,6 @@
+# Checked by hand against the books' rules.
+test folds_take_tuples_apart
+
+tick 0
+  added:
+    0: Ui.Label(text="ab 5")

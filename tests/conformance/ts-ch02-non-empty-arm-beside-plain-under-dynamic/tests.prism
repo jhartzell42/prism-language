@@ -1,0 +1,8 @@
+# The tests of ts-ch02-non-empty-arm-beside-plain-under-dynamic.
+emit Ui.*
+use App.*
+use Ui.*
+
+test the_arms_meet_at_the_plain_array, @main:
+    build
+    click at 0

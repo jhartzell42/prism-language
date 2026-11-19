@@ -1,0 +1,21 @@
+# A tag's plain field lifts its construction over a dynamic, as a record's does (Type System
+# ch. 4, "A dynamic where a plain field goes"): `Shape.Square(side=$n)` is a `$Shape`, and
+# only a sigiled field (`$x: T`) holds a dynamic itself. Written by Claude on the claude-bugs
+# branch; subject to change.
+emit Ui.*
+test mod Tests
+
+type Shape = row
+
+tag Shape.Square of Shape:
+    side: Nat
+
+Area: fn Shape -> Nat
+fn Area (Shape.Square(side=s)) = s * s
+
+@main: @unit
+@main:
+    !add <- Ui.Button($label=$"add")                          # 0
+    $n <- 2 then $n + 1 on !add
+    let $square = Shape.Square(side=$n)
+    Ui.Label($text=$"{Area $square}")                         # 1

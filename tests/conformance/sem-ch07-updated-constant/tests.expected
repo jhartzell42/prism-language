@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 7: a constant dynamic is never written, so `!Updated` of it never fires and the hold keeps 0.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="n 0 c 1")

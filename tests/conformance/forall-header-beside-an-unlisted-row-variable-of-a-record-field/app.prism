@@ -1,0 +1,30 @@
+# A widget whose type has a `forall` header naming `t` but not its row variable `rest`,
+# given a dynamic field of a record whose type takes that row (`Box rest`): `rest` is
+# quantified like any variable the header leaves out, so the call is well typed. prismc
+# refused it with two types that print alike ("expected `$(Nat ==> $@unit emit rest)`,
+# found `$(Nat ==> $@unit emit rest)`"). Pinned down from the documents programs'
+# `@HostRole` (`forall d (r: Role d). fn .. emit Seat.* d r | rest ..`).
+# Written by Claude, 15 November 2026, on the claude-self-hosting branch. Subject to change.
+emit Ui.*
+test mod Tests
+
+type Box rest = record:
+    $m: (Nat ==> $@(@unit emit rest))
+
+@Outer: fn prompt Box rest -> @$Text emit rest
+fn @Outer box:
+    $text <- @Count box.$m
+    @ $text
+
+@Count: forall t. fn prompt $(t ==> $@(@unit emit rest)) -> @$Text emit rest
+fn @Count $m:
+    @ $"{Size $m} guests"
+
+@Blank: fn Nat -> @unit emit Ui.*
+fn @Blank n:
+    Ui.Label($text=$"guest {n}")
+
+@page: @unit
+@page:
+    $text <- @Outer Box($m=$ {{1: $ (@Blank 1)}})                       # 0
+    Ui.Label($text=$text)                                               # 1

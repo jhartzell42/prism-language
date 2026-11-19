@@ -1,0 +1,39 @@
+# A widget of several clauses that takes, above it, the plain result of a widget that
+# takes a building `if`'s late plain result below both (Semantics ch. 4, "Binding groups
+# and cycles": any line may use any name the block binds, and the order of a group's lines
+# decides positions and nothing else; ruling TC: places are counted as they are built). The
+# widget above counts its places as built, and the name it takes is no split line's but a
+# taker's (`LateTakerResults`). Reaches `DeferredLine`'s refusal "a line that takes a late
+# result at its build, above the line that gives it, and whose places are counted as they
+# are built" on prismc-fd1.
+# Written by Claude (sweep-7, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Wide: fn Nat -> @unit
+fn @Wide 0:
+    Ui.Label($text=$"none")
+fn @Wide k:
+    Ui.Label($text=$"one {k}")
+    Ui.Label($text=$"two {k}")
+
+@Twice: fn Nat -> @Nat
+fn @Twice k:
+    Ui.Label($text=$"twice {k}")
+    @ k * 2
+
+@Seven: @Nat
+@Seven:
+    Ui.Label($text=$"seven")
+    @ 7
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    @Wide w                                                            # 0 and 1
+    w <- @Twice n                                                      # 2
+    n <- if loud:
+        k <- @Seven                                                    # 3
+        @ k
+    else:
+        @ 20

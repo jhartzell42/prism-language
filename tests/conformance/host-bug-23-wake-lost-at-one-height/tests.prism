@@ -1,0 +1,13 @@
+emit Ui.* | Tell.* | Keep.* | View.*
+use App.*
+
+test keeper_clears, @table:
+    build
+    click Ui.Button(label="kay joins")
+    compute
+    compute
+    click Ui.Button(label="ada +2")
+    compute
+    click Ui.Button(label="kay clears")
+    compute
+        => expect Ui.Label(text="kay keeps: total 0, nobody added last; accepted")

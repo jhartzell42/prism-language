@@ -1,0 +1,6 @@
+# Derived by hand: `Mirror` swaps the pair's parts.
+test generic_function_value
+
+tick 0
+  added:
+    0: Ui.Label(text="Pair(left=\"b\", right=1)")

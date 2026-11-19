@@ -1,0 +1,21 @@
+# A trait gives an associated row a default, `row Lower = unit` (library Documents,
+# ^Document; Type System ch. 3's associated row with a default, as an associated type has
+# one): an impl that does not choose it gets `unit`, so its widget method emits nothing.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Panel p:
+    row Lower = unit
+    @Counted: fn p -> @Nat emit Lower p
+
+type Quiet = record:
+    name: Text
+
+impl ^Panel Quiet:
+    fn @Counted quiet = @ 0
+
+@page: @unit
+@page:
+    n <- @Counted Quiet(name="quiet")                                    # nothing placed
+    Ui.Label($text=$"quiet {n}")                                         # 0

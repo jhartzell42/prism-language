@@ -1,0 +1,21 @@
+# The Test World answers `Prelude.Unwrap` as every World does (Semantics ch. 10,
+# "Exceptions: a widget giving up": "A `Prelude.Unwrap` answers each `~ x` with `x` [..]
+# Whatever answers the family, a World or a host document"; ch. 9: a request at tick n is
+# answered as an input of tick n+1). A click sends `~ taps` through the unwrap; the answer
+# comes in the next tick, which is owed. Written by Claude on the claude-lowering branch;
+# subject to change.
+emit Ui.* | Prelude.*
+test mod Tests
+use Ui.*
+
+~Wrapped: fn Nat -> ~Nat
+fn ~Wrapped n = ~ n
+
+@main: @unit emit Ui.* | Prelude.*
+@main:
+    !tap <- Ui.Button($label=$"tap")                              # 0
+    $taps <- 1 then $taps + 1 on !tap
+    let !~asked = ~Wrapped ($taps on !tap)
+    !count <- Prelude.Unwrap(!~value=!~asked)                     # 1
+    $heard <- 0 then !count
+    Ui.Label($text=$"heard {$heard}")                             # 2

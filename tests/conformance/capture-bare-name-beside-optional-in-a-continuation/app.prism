@@ -1,0 +1,40 @@
+# A lambda given to an unbounded fold binds `w` in a tuple pattern, calls an unbounded
+# function, and reads `w` after it, beside an outer `?w` that holds no copyable value: the
+# rest of the lambda after the call (a continuation) captures `w` alone, never the outer
+# `?w`. prismc captured both by their stem and moved `?w` into the continuation, so the
+# lambda was no `Fn` (rustc E0525, found building gen1 from q2 and again from q5).
+# Written by Claude, 15 November 2026, on the claude-self-hosting branch. Subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+type Decl = record:
+    title: Text
+
+?DeclOf: fn Text -> ?Decl
+fn ?DeclOf t = if t == "": nil else: ? Decl(title=t)
+
+Down: unbounded fn Nat -> Nat
+fn Down n = match n -? 1:
+    ? m: (Down m) + 1
+    nil: 0
+
+Count: unbounded fn [Text], Text -> Text
+fn Count xs, wanted:
+    let ?w = ?DeclOf wanted
+    let start = (((([[]], 0)), 0))
+    let ((done, k)) = Fold xs, start, \|((w, n)), x|
+        let size = match ?DeclOf x:
+            ? named: if (Len named.title) > 0: Down (Len x) else: 0
+            nil: 0
+        let ((names, total)) = w
+        let next = (((Push names, x), total + size))
+        ((next, n + 1))
+    let ((names, total)) = done
+    match ?w:
+        ? d: "{d.title}: {Len names} names, {total} letters, {k} steps"
+        nil: "none"
+
+@page: @unit
+@page:
+    Ui.Label($text=$"{Count [["ab", "cde"]], "t"}")                    # 0

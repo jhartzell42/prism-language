@@ -1,0 +1,14 @@
+# The root's test module, `Tests`: each module by its full path, the circle's names bare.
+emit r
+use Shapes.Round.Circle.*
+
+check nested_names:
+    Area 2 => 12
+    Shapes.Round.Circle.Area 2 => 12
+    Shapes.Round.Circle.Around 1 => 4
+    Shapes.Round.Oval.Squashed 1 => 4
+    Shapes.Round.Oval.Egg.Yolk 1 => 7
+    Shapes.Flat.Area 3 => 9
+    Shapes.Static.Sides Shapes.Static.Triangle => 3
+    Shapes.Switch.Pick True, 1 => 4
+    Shapes.Total 1 => 12

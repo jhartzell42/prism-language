@@ -1,0 +1,40 @@
+check moves
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+
+check status
+1: ok
+2: ok
+3: ok
+
+check castling
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok
+6: ok
+7: ok
+8: ok
+
+check castling_moves_the_rook
+1: ok
+2: ok
+
+check no_castling_after_the_king_moved
+1: ok
+2: ok
+
+check en_passant
+1: ok
+2: ok
+3: ok
+4: ok
+
+check promotion
+1: ok
+2: ok

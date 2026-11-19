@@ -1,0 +1,10 @@
+# An associated type its trait bounds by `^Pod` holds plain data, so a parameter of it
+# fires nothing and needs no `prompt` mark: `@Tagged`'s `held` is a `Key d`, and its result
+# reads it in the tick `!e` fires (ruling QD, `SeatId d _: ^Pod` on `^Document`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+trait ^Keyed d where Key d: ^Pod:
+    type Key
+
+@Tagged: forall d. fn Key d, prompt !Nat -> @!(Key d) where d: ^Keyed
+fn @Tagged held, !e = @ held on !e

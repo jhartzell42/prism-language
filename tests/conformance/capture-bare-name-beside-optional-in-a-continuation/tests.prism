@@ -1,0 +1,5 @@
+emit Ui.*
+use App.*
+
+test it_builds, @page:
+    build

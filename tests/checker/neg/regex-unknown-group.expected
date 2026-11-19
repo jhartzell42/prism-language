@@ -1,0 +1,4 @@
+tests/checker/neg/regex-unknown-group.prism:2: error[regex]: an unknown group: the groups are (re), (?:re), (?<name>re), (?P<name>re) and the flag groups
+    let r = %/(?#c)/
+              ^
+1 error

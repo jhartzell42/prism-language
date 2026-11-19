@@ -1,0 +1,6 @@
+# The tests of doc-kept-state-and-responses-over-document.
+emit Ui.*
+use App.*
+
+test raised_then_declined, @page:
+    build

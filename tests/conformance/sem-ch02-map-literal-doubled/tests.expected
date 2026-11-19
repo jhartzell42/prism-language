@@ -1,0 +1,5 @@
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="3 5 2 0 1 2")

@@ -1,0 +1,24 @@
+# A `rebuild` whose generation is a widget of several clauses ending on a plain result
+# (Semantics ch. 4, "What a `rebuild` hands back": the block ends on a plain `a`, the
+# `rebuild` gives `$a`; ch. 8: a widget application is transparent). Written by Claude on
+# the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Pick: fn Nat -> @Text
+fn @Pick 0:
+    Ui.Label($text=$"none")                                       # 0
+    @ "zero"
+fn @Pick n:
+    Ui.Label($text=$"some {n}")                                   # 0
+    Ui.Label($text=$"second")                                     # 1
+    @ "n{n}"
+
+@main: @unit
+@main:
+    !go <- Ui.Button($label=$"go")                                # 0
+    $x <- 0 then $x + 1 on !go
+    $picked <- rebuild $x:                                       # 1/#g
+        @Pick _
+    Ui.Label($text=$"{$picked}")                                  # 2

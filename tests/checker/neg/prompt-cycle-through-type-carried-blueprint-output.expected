@@ -1,0 +1,5 @@
+tests/checker/neg/prompt-cycle-through-type-carried-blueprint-output.prism:24: error[prompt-cycle]: a prompt cycle: `$@!echo`, `$!back`, `!said`
+        let $@!echo = $ (@Echo !said)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  fix: break it with a hold: `$last <- start then ...` reads the value as the tick opened
+1 error

@@ -1,0 +1,7 @@
+# The tests of ts-ch02-case-named-as-choice (Type System chapter 2).
+emit Ui.*
+use App.*
+
+test case_named_as_choice, @main:
+    build
+        => expect Ui.Label(text="Card 3 4 0 True")

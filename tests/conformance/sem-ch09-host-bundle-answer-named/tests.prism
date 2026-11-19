@@ -1,0 +1,10 @@
+# The tests of sem-ch09-host-bundle-answer-named.
+emit Ui.* | Pad.*
+use App.*
+
+test a_named_bundle_answers, @computed:
+    build
+        => expect Ui.Label(text="mock: 0")
+    click at 0
+    compute
+        => expect Ui.Label(text="mock: 2")

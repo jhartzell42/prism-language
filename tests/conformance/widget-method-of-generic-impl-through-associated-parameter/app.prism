@@ -1,0 +1,29 @@
+# A trait's widget method whose parameter names the trait's parameter only inside an
+# associated type (`@Show: fn Seats d -> ..`), applied by a generic widget of another
+# module (`@Hosted`), at a type whose impl is generic (`impl ^Hosting (Tallied o)`): the
+# impl the head chooses, its `o` the head's argument. Found by the p19 run on the tally
+# (`@HostSeats seats, Supply` at `Tallied OneEach`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+mod Framing
+test mod Tests
+use Framing.*
+
+type OneEach = choice:
+    OneEach
+derive ^Eq, ^Debug
+
+type Tallied o = record:
+    count: Nat
+
+type TallySeats o = record:
+    names: [Text]
+
+impl ^Hosting (Tallied o):
+    type Seats = TallySeats o
+    fn @Show seats:
+        Ui.Label($text=$"{Len seats.names} seated")                              # 0
+
+@page: @unit
+@page:
+    @Hosted<<Tallied OneEach>> TallySeats(names=[["ada", "bob"]])

@@ -1,0 +1,7 @@
+# The tests of sem-ch08-generic-widget-blueprint-parameter.
+emit Ui.*
+use App.*
+use Ui.*
+
+test a_generic_widget_takes_a_blueprint, @host:
+    build

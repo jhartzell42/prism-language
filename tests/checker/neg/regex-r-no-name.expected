@@ -1,0 +1,4 @@
+tests/checker/neg/regex-r-no-name.prism:2: error[regex]: the pattern has no group of that name
+    let r = %/(?<x>a)/${y}/
+                      ^
+1 error

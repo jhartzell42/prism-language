@@ -1,0 +1,9 @@
+# The tests of sem-ch08-let-pattern-dynamic-in-widget.
+emit Ui.*
+use App.*
+
+test the_bound_dynamic_follows, @page:
+    build
+        => expect Ui.Label(text="tank at 0")
+    click at 0
+        => expect Ui.Label(text="tank at 1")

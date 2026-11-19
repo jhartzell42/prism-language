@@ -1,0 +1,21 @@
+# `@Flatten` of an expression that is no name, `$` over a dynamic a function gave (Type
+# System ch. 4, "Where the table looks": `$` is `fn a -> $a` and a bare type variable
+# lifts, so `$ ($Choose True, $a, $b)` is a map over `$b` to constants of its value;
+# Semantics ch. 7 and Appendix B, `@Flatten`; ruling FV): the outer moves whenever `$b`
+# does, and the flatten adopts the new constant after that tick and reads it from the
+# next, owed.
+# Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+$Choose: fn Bool, $Nat, $Nat -> $Nat
+fn $Choose second, $p, $q = if second: $q else: $p
+
+@main: @unit
+@main:
+    !go <- Ui.Button($label=$"go")                                # 0
+    $a <- 5 then $a + 1 on !go
+    $b <- 20 then $b + 2 on !go
+    $shown <- @Flatten ($ ($Choose True, $a, $b))
+    Ui.Label($text=$"{$shown}")                                   # 1

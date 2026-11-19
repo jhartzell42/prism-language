@@ -1,0 +1,6 @@
+# Derived by hand from Type System ch. 5, "Existentials are dictionaries" (the value keeps the impl of the type it hides) and ruling EX (only the call of a method that cannot dispatch is an error): `Weigh` of the hidden 3 is 3, of the hidden "ab" 2, and `Total` at `[Nat]` is 3; never run when written.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="3 2 3")

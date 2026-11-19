@@ -1,0 +1,6 @@
+# The tests of ts-ch03-impl-non-empty-and-plain-array.
+emit Ui.*
+use App.*
+
+test each_type_asks_its_own_impl, @main:
+    build

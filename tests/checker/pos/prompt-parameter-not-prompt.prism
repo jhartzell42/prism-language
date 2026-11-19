@@ -1,0 +1,20 @@
+# A function parameter that is not prompt (Jimmy, 13 November, ruling PT): applying it is
+# no same-tick link, so `@Loop`'s hold loop is not one within a tick, and the caller's
+# lambda, which gives its argument back a tick later, is not prompt. Read locally: `@Loop`
+# from `Pass`'s type, the lambda from its own body.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+module PromptFree
+emit Ui.*
+
+@Loop: fn (fn !Nat -> @!Nat) -> @unit emit Ui.*
+fn @Loop Pass:
+    !press <- Ui.Button($label=$"press")
+    let !fed = (1 on !press) <| !Updated $total
+    !step <- Pass !fed
+    $seen <- 0 then $seen + 1 on !step
+    let $total = $seen * 2
+    Ui.Label($text=$"{$total}")
+
+@host: @unit emit Ui.*
+@host:
+    @Loop \|!passed| @Defer !passed

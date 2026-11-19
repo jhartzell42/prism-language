@@ -1,0 +1,28 @@
+# A widget of several clauses with a plain pair as its result applied, above the line that
+# gives it, to a building `if`'s late plain result, its pair taken apart by a tuple
+# pattern (Semantics ch. 4, "Binding groups and cycles": any line may use any name the
+# block binds, and "the order of a group's lines decides positions and nothing else";
+# ch. 8: `<-` builds the child and binds its plain result, here by a pattern; ruling TC).
+# Nothing here is a cycle. Green on keep-B: a probe of `DeferredLine`'s refusal "gives a
+# plain result of its own that no name binds", which a tuple pattern does not reach.
+# Written by Claude (sweep-4, the prismc run), 12 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Wide: fn Nat -> @((Nat, Nat))
+fn @Wide 10:
+    Ui.Label($text=$"ten")
+    @ ((1, 2))
+fn @Wide k:
+    @ ((3, 4))
+
+@Page: fn Bool -> @unit
+fn @Page loud:
+    ((a, b)) <- @Wide n                                                # 0 when n is 10
+    Ui.Label($text=$"wide {a} {b}")                                    # 1, or 0
+    n <- if loud:
+        Ui.Label($text=$"loud")                                        # 2
+        @ 10
+    else:
+        @ 20

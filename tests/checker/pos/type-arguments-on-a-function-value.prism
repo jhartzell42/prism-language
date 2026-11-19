@@ -1,0 +1,14 @@
+# A function named with `<<..>>` and given no arguments is the function at those types, as
+# a value (Jimmy's ruling FA, ruling IN): `@Run Counted<<Nat>>, 3`. Found by the step 3
+# build on the library (`@Run ResponseOf<<d>>, ..`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+module TypeArgumentValue
+emit Ui.*
+
+Counted: forall a. unbounded fn a -> Nat
+fn Counted value = 1
+
+@Shown: @unit
+@Shown:
+    !done <- @Run Counted<<Nat>>, 3
+    Ui.Label($text=$"run")

@@ -1,0 +1,4 @@
+tests/checker/neg/regex-name-twice.prism:2: error[regex]: a group name used twice
+    let r = %/(?<n>a)(?<n>b)/
+                     ^
+1 error

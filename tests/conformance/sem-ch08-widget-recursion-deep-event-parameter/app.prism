@@ -1,0 +1,24 @@
+# A widget that calls itself in a static position deeper than sixteen levels and hands
+# its event parameter down (Semantics ch. 4: "widget functions recurse as deep as their
+# data"; ch. 8: a widget application is transparent, each place the next number; ruling
+# TC). Every level keeps a hold of its own, fed by the one event. Written by Claude on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@Chain: fn Nat, !Click -> @unit
+fn @Chain 0, !go:
+    $seen <- 0 then $seen + 1 on !go
+    Ui.Label($text=$"end: {$seen}")
+fn @Chain n, !go:
+    $seen <- 0 then $seen + n on !go
+    Ui.Label($text=$"level {n}: {$seen}")
+    match n -? 1:
+        ? m: @Chain m, !go
+        nil: Ui.Label($text=$"end")
+
+@main: @unit
+@main:
+    !go <- Ui.Button($label=$"go")                                # 0
+    @Chain 20, !go                                               # 1 to 21
+    Ui.Label($text=$"after")                                      # 22

@@ -1,0 +1,27 @@
+# `prompt-cycle`, through a widget's line: `$seen` steps on `!step`, `!fed` merges
+# `!Updated $total`, the update event of a dynamic lifted over the hold, and `!step` is
+# what `@Pass` gives for `!fed`. A hold's value is delayed, but its update event fires in
+# the tick of its step (Semantics ch. 7, R3), so a press would step `$seen`, update
+# `$total`, fire `!fed` and `!step`, and step `$seen` again in one tick.
+# Promptness is part of a function's type, and the check is local (Jimmy, 13 November,
+# ruling PT): `@Pass`'s signature says `prompt`, so its line is a same-tick link from its
+# argument to its result, and the loop is found in `@host` from that type alone, never by
+# reading `@Pass`'s body. The same `@Pass` without the word is refused at its own body
+# (neg/prompt-unmarked-widget-function).
+# The same loop with `let !step = !fed` is neg/sem-ch07-block-hold-updated-cycle.
+# Expected text derived by hand; never run.
+# Written by Claude on the claude-self-hosting branch; subject to change.
+emit Ui.*
+
+@Pass: fn prompt !Nat -> @!Nat
+fn @Pass !passed:
+    @ !passed
+
+@host: @unit
+@host:
+    !press <- Ui.Button($label=$"press")
+    let !fed = (1 on !press) <| !Updated $total
+    !step <- @Pass !fed
+    $seen <- 0 then $seen + 1 on !step
+    let $total = $seen * 2
+    Ui.Label($text=$"{$total}")

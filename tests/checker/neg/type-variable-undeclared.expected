@@ -1,0 +1,16 @@
+tests/checker/neg/type-variable-undeclared.prism:6: error[unknown-name]: `b` is no parameter of `Loose`
+        held: b
+              ^
+  fix: declare it in the head, `type Loose b = ...`
+tests/checker/neg/type-variable-undeclared.prism:9: error[unknown-name]: `d` is no parameter of `Shade`
+        Dark d
+             ^
+  fix: declare it in the head, `type Shade c d = ...`
+tests/checker/neg/type-variable-undeclared.prism:12: error[unknown-name]: `e` is no parameter of `Free`
+    type Free = [e]
+                ^^^
+  fix: declare it in the head, `type Free e = ...`
+tests/checker/neg/type-variable-undeclared.prism:14: error[collision]: a second parameter `a`
+    type Twice a a = record:
+                 ^
+4 errors

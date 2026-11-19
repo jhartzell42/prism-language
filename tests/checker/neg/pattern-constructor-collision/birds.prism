@@ -1,0 +1,11 @@
+# `Birds`, a child module of the root.
+emit r
+
+type Kind = choice:
+    Small
+    Large
+    Sized Nat
+
+type Pair = record:
+    left: Nat
+    right: Nat

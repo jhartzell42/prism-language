@@ -1,0 +1,7 @@
+# The tests of doc-generic-function-giving-a-role-indexed-type-at-a-role.
+emit Ui.*
+use App.*
+
+test seat_at_each_role, @page:
+    build
+    click at 0

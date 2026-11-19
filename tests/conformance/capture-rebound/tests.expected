@@ -1,0 +1,12 @@
+# The Rust target's transcript: Count entered, then a loop turn per Step (three) and the continuation, five cycles (D6).
+test a_captured_let_moves_once
+
+tick 0
+  added:
+    1: Ui.Label(text="counting")
+
+compute until idle: 5 ticks, 1 to 5
+
+tick 5
+  changed:
+    1: Ui.Label(text="up!3")

@@ -1,0 +1,39 @@
+# The transcript prismc r18 (e64df19f) gives, read by hand against the hosting library's own `accepted` (prism-notes, evidence/documents/tests.expected): a request at tick 3 is answered at tick 4 (Semantics ch. 9).
+test accepted
+
+tick 0
+  added:
+    0/0/0/0: Ui.Button(label="cy joins")
+    0/0/0/1: Ui.Button(label="cy is removed")
+    0/0/0/2: Ui.Button(label="ada is removed")
+    0/0/0/3: Ui.Button(label="bob becomes eager")
+    0/0/0/4: Ui.Button(label="dee and eve join, eager at 3")
+    0/0/0/5: Ui.Button(label="dee, eve and gus join, eager at 2")
+    0/0/0/6: Ui.Button(label="fay joins, eager at 1")
+    0/0/0/7: Ui.Button(label="fay is removed")
+    0/0/0/8: Ui.Button(label="kay joins")
+    0/0/0/9: Ui.Button(label="dee and kay join, eager at 4")
+    0/0/0/10/1.[(((Teller "ada"), Person))].0/0.[1]/0: Ui.Button(label="ada +1")
+    0/0/0/10/1.[(((Teller "ada"), Person))].0/0.[2]/0: Ui.Button(label="ada +2")
+    0/0/0/10/1.[(((Teller "ada"), Person))].0/0.[3]/0: Ui.Button(label="ada +1 and leaves")
+    0/0/0/10/1.[(((Teller "ada"), Person))].0/0.[6]/0: Ui.Label(text="ada: (loading); nothing yet")
+    0/0/0/10/1.[(((Teller "bob"), Person))].0/0.[1]/0: Ui.Button(label="bob +1")
+    0/0/0/10/1.[(((Teller "bob"), Person))].0/0.[2]/0: Ui.Button(label="bob +2")
+    0/0/0/10/1.[(((Teller "bob"), Person))].0/0.[3]/0: Ui.Button(label="bob +1 and leaves")
+    0/0/0/10/1.[(((Teller "bob"), Person))].0/0.[6]/0: Ui.Label(text="bob: (loading); nothing yet")
+
+tick 1
+
+tick 2
+  changed:
+    0/0/0/10/1.[(((Teller "ada"), Person))].0/0.[6]/0: Ui.Label(text="ada: total 0, may add; nothing yet")
+    0/0/0/10/1.[(((Teller "bob"), Person))].0/0.[6]/0: Ui.Label(text="bob: total 0, may add; nothing yet")
+
+tick 3
+  in:
+    0/0/0/10/1.[(((Teller "ada"), Person))].0/0.[1]/0: click
+
+tick 4
+  changed:
+    0/0/0/10/1.[(((Teller "ada"), Person))].0/0.[6]/0: Ui.Label(text="ada: total 1, may not add; accepted")
+    0/0/0/10/1.[(((Teller "bob"), Person))].0/0.[6]/0: Ui.Label(text="bob: total 1, may add; nothing yet")

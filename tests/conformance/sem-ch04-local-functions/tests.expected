@@ -1,0 +1,6 @@
+# Derived by hand: 1*2 + 2*2 + 3*2 is 12; the pair (4, 5) gives 45; the widget's local function joins 6 and 7.
+test local_functions
+
+tick 0
+  added:
+    0: Ui.Label(text="12 45 6-7")

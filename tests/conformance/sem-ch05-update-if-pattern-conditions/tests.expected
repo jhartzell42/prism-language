@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 5 (an update block's `if p <- x` runs its block only when the pattern matches, else its `else`): 2 * 3 is 6; a chain of one link has no second, so 100; `((0, 7))` matches and adds 7 to 1; `((3, 7))` does not, so 1 stays.
+test it_builds
+
+tick 0
+  added:
+    0: Ui.Label(text="6 100 8 1")

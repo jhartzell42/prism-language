@@ -1,0 +1,21 @@
+# The walk's tests: declarations of sem-ch07-walk.prism (Semantics chapter 6).
+emit Ui.*
+use App.*
+
+# Five cycles, one a tick: a direct-style walk would finish in the first.
+test a_walk_takes_a_cycle_per_call, @Summed (Node (Node (Leaf 1), (Leaf 2)), (Leaf 3)):
+    build
+        => expect Ui.Label(text="working")
+    compute until idle
+        => expect Ui.Label(text="6")
+
+# The frames hold the pending sums: after four ticks the last leaf is entered, not added.
+test the_frames_wait, @Summed (Node (Node (Leaf 1), (Leaf 2)), (Leaf 3)):
+    build
+    compute
+    compute
+    compute
+    compute
+        => expect Ui.Label(text="working")
+    compute
+        => expect Ui.Label(text="6")

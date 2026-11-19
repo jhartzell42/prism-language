@@ -1,0 +1,7 @@
+# The tests of ts-ch03-impl-calls-at-its-part (Type System chapter 3).
+emit Ui.*
+use App.*
+
+test calls_at_the_part, @main:
+    build
+        => expect Ui.Label(text="((a)) ((z3))")

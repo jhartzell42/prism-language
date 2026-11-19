@@ -1,0 +1,11 @@
+# A constructor named twice among a clause's patterns binds nothing twice: only a binder is
+# bound once (checker neg bound-twice). Written by Claude on the claude-bugs branch; subject
+# to change.
+type Coin = choice:
+    Heads
+    Tails
+
+Same: fn Coin, Coin -> Bool
+fn Same Heads, Heads = True
+fn Same Tails, Tails = True
+fn Same a, b = False

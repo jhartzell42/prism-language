@@ -1,0 +1,7 @@
+# Derived by hand from Type System ch. 4: `[[(($a, 1))]]` has one element, so `sums` has
+# one, whatever `$a` is.
+test a_dynamic_in_a_tuple
+
+tick 0
+  added:
+    0: Ui.Label(text="1")

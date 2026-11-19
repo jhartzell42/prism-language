@@ -1,0 +1,10 @@
+# The root's test module: the root's children by `use`.
+emit r
+use Words.*
+use Geometry.*
+
+Twice: fn Nat -> Text
+fn Twice n = Name (Double n)
+
+check names:
+    Twice 3 => "6 units"

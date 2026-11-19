@@ -1,0 +1,6 @@
+# Derived by hand from ruling AQ (the associated type written through its trait; the bare `Reason` is the program's type) and Part III ch. 6 (the player's reason is the impl's equation's, the program's `Reason`).
+test said
+
+tick 0
+  added:
+    0: Ui.Label(text="not your move; again: not your move")

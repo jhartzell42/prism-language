@@ -1,0 +1,29 @@
+# Derived by hand from Semantics ch. 4 (a building `match` adds no path segment), ch. 8 (`<-` binds the child's result; a widget application is transparent), Type System ch. 2 ("Bundles": a name binds the bundle whole, and a `let` gives it another name) and ruling TC (places counted as built: the loud arm builds place 0, so the button is 1, the "named" label 2 and the page's label 3; the soft arm builds none, so they are 0, 1 and 2).
+test loud
+
+tick 0
+  added:
+    0/0/0.0: Ui.Label(text="x")
+    0/0/1: Ui.Button(label="go")
+    0/1: Ui.Label(text="named")
+    1: Ui.Label(text="n 10, gone 0")
+
+tick 1
+  in:
+    0/0/1: click
+  changed:
+    1: Ui.Label(text="n 10, gone 10")
+
+test soft
+
+tick 0
+  added:
+    0/0/1: Ui.Button(label="go")
+    0/1: Ui.Label(text="named")
+    1: Ui.Label(text="n 20, gone 0")
+
+tick 1
+  in:
+    0/0/1: click
+  changed:
+    1: Ui.Label(text="n 20, gone 20")

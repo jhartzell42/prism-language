@@ -1,0 +1,16 @@
+# `<<..>>` gives a definition's variables in the order its `forall` names them, however its
+# type writes them (Jimmy's ruling FA): `Kept<<Nat>>` gives `a`, though `r` comes first in
+# `Kept`'s type. Found by the step 3 build on the library (`PendingFrom<<d>>` under
+# `forall d (r: Role d)` gave `d` to `r`).
+# Written by Claude on the claude-self-hosting branch; subject to change.
+
+type Access = choice:
+    Reader
+    Writer
+derive ^Eq, ^Debug
+
+Kept: forall a (r: Access). fn Fixed r, a -> a
+fn Kept role, value = value
+
+Three: fn unit -> Nat
+fn Three nothing = Kept<<Nat>> Fixed<<Reader>>, 3

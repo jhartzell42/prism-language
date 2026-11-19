@@ -1,0 +1,12 @@
+# `layer-unknown`: nothing says whether `Anything`'s value is plain, a dynamic or an event,
+# and `Twice` would build a different thing for each (ch. 5, When an outer layer is still a
+# variable). `Anything` has a signature and no clauses, as a builtin does.
+Anything: fn unit -> a
+
+Twice: fn c -> ((c, c))
+fn Twice x = ((x, x))
+
+Count: fn Nat -> Nat
+fn Count n:
+    let both = Twice (Anything unit)
+    n

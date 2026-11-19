@@ -1,0 +1,9 @@
+# The tests of sem-ch04-clause-ending-on-ignored-unit-bind.
+emit Ui.*
+use App.*
+
+test loud, @Page True:
+    build
+
+test soft, @Page False:
+    build

@@ -1,0 +1,16 @@
+# Semantics ch. 4's "The label that lags": a `rebuild` whose block ends on a constant
+# dynamic, `@ $"showing {_}"`, gives a `$$Text` that `@Flatten` follows. Written by Claude
+# on the claude-lowering branch; subject to change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@viewer: @unit
+@viewer:
+    !next <- Ui.Button($label=$"next")                            # 0
+    $page <- 1 then $page + 1 on !next
+    $$name <- rebuild $page:                                     # 1/#g
+        Ui.Label($text=$"page {_}")                               # 1/#g/0
+        @ $"showing {_}"
+    $name <- @Flatten $$name
+    Ui.Label($text=$name)                                         # 2

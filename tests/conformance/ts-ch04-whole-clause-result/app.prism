@@ -1,0 +1,24 @@
+# The dynamic result of a widget of several clauses passed whole to a function that takes
+# it so (Type System ch. 4, Application; Semantics ch. 8: `$r <- @Pick 1` binds the
+# chosen clause's result). Written by Claude on the claude-lowering branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+Wrap: fn $Nat -> [$Nat]
+fn Wrap $a = [[$a]]
+
+@Pick: fn Nat -> @$Nat
+fn @Pick 0:
+    @ $ 0
+fn @Pick k:
+    !inc <- Ui.Button($label=$"inc")                             # 0
+    $n <- k then $n + 1 on !inc
+    @ $n
+
+@rows: @unit
+@rows:
+    $r <- @Pick 1                                                # 0
+    for $d <- Wrap $r:                                           # 1/[0]
+        Ui.Label($text=$"row {$d}")                              # 1/[0]/0

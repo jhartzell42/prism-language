@@ -1,0 +1,15 @@
+# A `rebuild` whose block ends on a plain result (`@ _ * 2`): the rebuild's dynamic is the
+# current generation's result. Written by Claude on the claude-bugs branch; subject to
+# change.
+emit Ui.*
+test mod Tests
+use Ui.*
+
+@main: @unit
+@main:
+    !go <- Ui.Button($label=$"go")                                # 0
+    $page <- 1 then $page + 1 on !go
+    $doubled <- rebuild $page:                                   # 1/#g
+        Ui.Label($text=$"page {_}")
+        @ _ * 2
+    Ui.Label($text=$"{$doubled}")                                 # 2

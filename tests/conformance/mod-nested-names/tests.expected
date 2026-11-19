@@ -1,0 +1,7 @@
+# Derived by hand: `Types` is the top-level module and `A.Types` the submodule wherever they are written (Semantics ch. 6, names by full path).
+check both_types
+1: ok
+2: ok
+3: ok
+4: ok
+5: ok

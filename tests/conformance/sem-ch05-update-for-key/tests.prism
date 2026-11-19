@@ -1,0 +1,7 @@
+# The loop's test: declarations of sem-ch05-update-for-key (Semantics chapter 6).
+emit Ui.*
+use App.*
+
+test update_for_binds_key, @shown:
+    build
+        => expect Ui.Label(text=" a=1 b=2")

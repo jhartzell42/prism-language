@@ -1,0 +1,6 @@
+# Derived by hand from Semantics ch. 4 and Type System ch. 5: `Same` is the identity at each type, so the label shows 1 and a, and `total` is 2 + 1 = 3.
+test a_let_used_above_at_two_types
+
+tick 0
+  added:
+    0: Ui.Label(text="1 a 3")

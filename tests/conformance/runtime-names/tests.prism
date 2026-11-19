@@ -1,0 +1,8 @@
+# The runtime's class names as the program's types: declarations of runtime-names.prism.
+emit Ui.*
+use App.*
+use Ui.*
+
+test names_do_not_collide, @rows:
+    build
+    click at 0

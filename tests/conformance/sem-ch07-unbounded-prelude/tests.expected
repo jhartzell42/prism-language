@@ -1,0 +1,12 @@
+# A cycle per call of Double (D6, D8).
+test each_takes_an_unbounded_function
+
+tick 0
+  added:
+    1: Ui.Label(text="working")
+
+compute until idle: 4 ticks, 1 to 4
+
+tick 4
+  changed:
+    1: Ui.Label(text="[[2, 4, 6]]")

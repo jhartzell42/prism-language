@@ -1,0 +1,23 @@
+tests/checker/neg/bound-twice.prism:14: error[collision]: `Heads` is a constructor of `Coin` in this module
+    Heads: fn Nat -> Nat
+    ^^^^^^^^^^^^^^^^^^^^
+tests/checker/neg/bound-twice.prism:15: error[no-signature]: `Heads` has no signature line
+    fn Heads n = n
+    ^^^^^^^^^^^^^^
+  fix: write `Heads: fn ... -> ...` above it
+tests/checker/neg/bound-twice.prism:18: error[collision]: a second `let` for `limit`
+    let limit = 4
+    ^^^^^^^^^^^^^
+tests/checker/neg/bound-twice.prism:21: error[collision]: `left` is given twice
+    fn Make n = Pair(left=n, left=n, right=n)
+                             ^^^^^^
+tests/checker/neg/bound-twice.prism:24: error[collision]: `x` is bound twice here
+    fn Sum x, x = x + x
+              ^
+tests/checker/neg/bound-twice.prism:27: error[collision]: `a` is bound twice here
+    fn Both ((a, a)) = a
+                 ^
+tests/checker/neg/bound-twice.prism:30: error[collision]: `y` is bound twice here
+    fn Folded xs = Fold xs, 0, \|y, y| y
+                                    ^
+7 errors

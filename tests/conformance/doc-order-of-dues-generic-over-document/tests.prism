@@ -1,0 +1,6 @@
+# The tests of doc-order-of-dues-generic-over-document.
+emit Ui.*
+use App.*
+
+test one_applied_the_rest_wait, @page:
+    build

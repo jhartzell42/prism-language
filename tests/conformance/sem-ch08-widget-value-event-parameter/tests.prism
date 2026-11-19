@@ -1,0 +1,12 @@
+# The tests of sem-ch08-widget-value-event-parameter.
+emit Ui.*
+use App.*
+
+test picked, @Page True:
+    build
+    click at 0
+        => expect Ui.Label(text="total 1")
+
+test not_picked, @Page False:
+    build
+    click at 0

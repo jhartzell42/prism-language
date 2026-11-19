@@ -1,0 +1,12 @@
+# Audited: three is ones + tens + 100, four that plus 1000.
+# The tests of ts-ch04-whole-lifts-many (Type System chapter 4).
+emit Ui.*
+use App.*
+
+test lifts_over_three_and_four, @summed:
+    build
+        => expect Ui.Label(text="three 100 four 1100")
+    click Ui.Button(label="One")
+        => expect Ui.Label(text="three 101 four 1101")
+    click Ui.Button(label="Ten"), click Ui.Button(label="One")
+        => expect Ui.Label(text="three 112 four 1112")

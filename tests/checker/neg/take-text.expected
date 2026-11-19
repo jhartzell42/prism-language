@@ -1,0 +1,7 @@
+tests/checker/neg/take-text.prism:3: error[mismatch]: expected `Text`, found `[t2]`
+    fn First t = Take t, 1
+                 ^^^^^^^^^
+tests/checker/neg/take-text.prism:3: error[mismatch]: expected `[t2]`, found `Text`
+    fn First t = Take t, 1
+                      ^
+2 errors
