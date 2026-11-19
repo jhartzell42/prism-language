@@ -3015,7 +3015,13 @@ fn CtorApp lx, env, c, args, span:
                 let path = if isUnitType or isNewtype: tyPath else: RefChild tyPath, (Camel (BareName c.name))
                 let made = if (Len c.args) == 0: XPath path else: XCtor path, vals
                 # a generic choice's case with the choice's type said
-                if (Len owner.params) > 0 and not isUnitType and not isNewtype: VlOwned (XTyped made, (BuiltTy t)), t
+                # (and one of whose parameters no payload holds, `Response<D>`'s `D`, kept for
+                # an impl's head, `PhantomParam`: Rust reads it off nothing the case is
+                # given, so the value is bound at its type where that can be said;
+                # `ResponseBytes<<Board, Teller>> (Declined ..)`, rustc E0283,
+                # doc-role-indexed-types-bounded-for-every-role-encoded)
+                if (Len owner.params) > 0 and (not isUnitType) and (not isNewtype) and Fold owner.params, False, \|f, p| f or PhantomParam lx, owner, p: VlOwned (SaidAs lx, made, (BuiltTy t)), t
+                else: if (Len owner.params) > 0 and not isUnitType and not isNewtype: VlOwned (XTyped made, (BuiltTy t)), t
                 else: VlOwned made, t
             otherwise: VlOwned (InternalBug "a constructor of {c.owner}"), t
 

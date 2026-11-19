@@ -48,7 +48,14 @@ use Check.Shrink.Summaries.*
 # Bind a pattern against a type: names show their marks (each a type at once, ch. 5); a
 # refutable pattern stands only where the block has somewhere to go (`refutable`).
 BindPattern: unbounded fn Env, St, Pattern, Ty, Bool -> ((Env, St))
-fn BindPattern env, st, p, t, refutable = match p.kind:
+# (what a `Fixed<<..>>` pattern before this one taught is put in the type first: beside
+# `Fixed<<Raiser>>` in a tuple, a `Response Count r` is matched as a `Response Count
+# Raiser`, its `Declined (StopsAt most)` against the raiser's reason;
+# doc-existential-match-by-role-and-response-exhaustive)
+fn BindPattern env, st, p, t, refutable = BindPatternAt env, st, p, (if (Len (Keys env.refine)) == 0: t else: Refined env, (Zonk st, t)), refutable
+
+BindPatternAt: unbounded fn Env, St, Pattern, Ty, Bool -> ((Env, St))
+fn BindPatternAt env, st, p, t, refutable = match p.kind:
     PName n:
         let bare = Or n.path[0], ""
         let isCtor = (IsUpperText bare) and (Len n.sigils) == 0 and (IsCtorName env, n)

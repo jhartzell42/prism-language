@@ -448,7 +448,9 @@ fn ClauseCoverage env, st, clauses, params, span:
         let reachable = (Len q) != (Len params) or Useful env, s, acc, q, params
         let s2 = if reachable: s else: ErrFix s, "unreachable", c.span, "this clause is never reached", "remove it, or put it above the clause that covers it"
         (((Push acc, q), s2))
-    if (Len params) == 0: st2
+    # (a parameter whose type is an error already reported has no cases to miss: no
+    # second error follows the first, tests/checker/neg/assoc-type-name-collision)
+    if (Len params) == 0 or Fold params, False, \|bad, p| bad or (Zonk st2, p) == TyErr: st2
     else: match ?Witness env, st2, rows, params:
         ? w: ErrFix st2, "not-exhaustive", span, "these clauses miss `{Join w, ", "}`", "add a clause for it"
         nil: st2

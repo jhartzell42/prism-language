@@ -46,7 +46,10 @@ ConvType: unbounded fn Cx, St, Type -> ((Ty, St))
 fn ConvType cx, st, t = match t.kind:
     TName n, args:
         let ((base, st2)) = ConvNamed cx, st, n, args, t.span
-        (((WithMarks n.sigils, base, cx.scope), st2))
+        # (`^Document.Reason`'s `^` is its trait's, part of the name and no mark of the
+        # type, ruling AQ; q12 read it as a mark, type-named-as-a-traits-associated-type)
+        if n.sigils == "^" and (Len n.path) >= 2: ((base, st2))
+        else: (((WithMarks n.sigils, base, cx.scope), st2))
     TSigiled sigils, inner:
         let ((i, st2)) = ConvType cx, st, inner
         (((WithMarks (BlueprintMarks sigils, inner, i), i, cx.scope), st2))
