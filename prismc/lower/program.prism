@@ -924,9 +924,37 @@ fn PlacedWidget lx, qk, calleeSpan, args = match lx.g.vals[qk]:
                     &_.subst <= Fold user, &_.subst, \|m, ((q, t))| Insert m, q, t
                 match ?ValuedTypes lxu, v, calleeSpan, args:
                     ? types: Append acc, (Closed lxu, types)
-                    nil: acc
+                    # (and a variable an `any` arm around the reading opened, `r` of `any
+                    # ((role, id, element))` in `@Over`'s supplier: the reading at each
+                    # variant the arm is lowered at, `OpenedAt`; examples/chess's
+                    # `@AnswerFrom<<d>> role, ..`, looked up at `Player` and at `Spectator`
+                    # and collected at neither by q12)
+                    nil: Fold (AtOpenedVariants lxu, calleeSpan), acc, \|acc2, lxk| match ?ValuedTypes lxk, v, calleeSpan, args:
+                        ? types: Append acc2, (Closed lxk, types)
+                        nil: acc2
         else: [[]]
     nil: [[]]
+
+# The lowerings of a place inside `any` arms of the definition being lowered, one for each
+# choice of variants those arms open their kinded variables at (`ExistsMatch`): none
+# where no such arm holds the place or a kind's variants are not known.
+AtOpenedVariants: unbounded fn Lx, Range -> [Lx]
+fn AtOpenedVariants lx, at:
+    let exprs = Fold lx.g.defs, [[]], \|acc, d| if (InstanceKey d) == lx.inDefinition: Append acc, (DefExprs d) else: acc
+    let opened = Fold exprs, [[]], \|acc, x| match x.kind:
+        EMatch s, arms: Fold arms, acc, \|acc2, arm| match arm.?pattern:
+            ? (Pattern(kind=(PAny p), span=ignore)) if arm.span.start <= at.start and at.end <= arm.span.end: match Peel (TypeAt lx, s.span):
+                TyExists vs, b, ignore2, kinds:
+                    let fresh = Or (?ParamMatch b, (PatternTyOf lx, p), {{}}), {{}}
+                    Fold vs, acc2, \|acc3, q| match fresh[q]:
+                        ? (TyRigid r): Push acc3, ((r, (KindVariants lx, (KindOfVar kinds, q))))
+                        otherwise: acc3
+                otherwise: acc2
+            otherwise: acc2
+        otherwise: acc
+    if (Len opened) == 0: [[]]
+    else: Fold opened, [[lx]], \|lxs, ((r, variants))| Fold lxs, [[]], \|acc, one| Fold variants, acc, \|acc2, k| Push acc2, (update one:
+        &_.subst <= Insert &_.subst, r, (TyRole k))
 
 # The lowerings a reading's types are closed at: the lowering itself where the types
 # hold no variable of a generalized `let`; else one for each instantiation the `let`'s
