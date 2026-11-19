@@ -112,7 +112,8 @@ fn EventRef wx, menv, e:
                 else: NeverEvent (Crossed wx, "the event `{SNameKey n}`, of node `{r.owner}`,"), t
             # an event value held by a local (a parameter given one): heard through its port
             ? (BnLocal ignore, ignore2, (OutEvent ignore3)): EventObjectRef wx, menv, e, t
-            otherwise: NeverEvent wx, t
+            # (the prelude's `never`; any other name that is an event is a value, heard so)
+            otherwise: if (SNameKey n) == "never": NeverEvent wx, t else: EventObjectRef wx, menv, e, t
         # an `!` field of a plain value (`results.!reset`, a record a widget gave back):
         # the event value the field holds, heard through its port, as an event a function
         # gave whole is (bundle-part-in-a-dynamic-record-field-read-by-another-widget, whose
@@ -339,7 +340,18 @@ fn EventMap wx, menv, e:
             let k = PlaceKey lx, one.span
             let Pipe = \|x, K| r.pipe x, \|y| K (Own (ValueOf lx, (BindSpan menv, k, (FiringValue y, et)), e))
             ((EvRef(node=r.node, owner=r.owner, pipe=Pipe), w1))
-        otherwise: NeverEvent wx, t
+        # (no event among its operands: the expression is an event value itself, what a
+        # function value applied gives, `then Answer watcher`, heard through its port;
+        # q12 took it for no event at all and the hold never stepped,
+        # doc-closure-opening-an-existential-lifts-a-role-generic-call)
+        [[]]: EventObjectRef wx, menv, e, t
+        otherwise: NeverEvent (Unheard wx, "`{SrcText lx, lx.file, e.span}`, an expression over several events at once, which no combinator of the node joins"), t
+
+# An event expression the node cannot hear: refused where the crate is built, never an
+# event that does not fire.
+Unheard: fn Wx, Text -> Wx
+fn Unheard wx, what = update wx:
+    &_.build <= Push &_.build, (DoExpr (Refusal "{what} (the lowering of events in a node is not written for it)"))
 
 # A firing's value where an expression reads it: a local is a place, anything else an
 # owned temporary.

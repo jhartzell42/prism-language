@@ -3113,11 +3113,17 @@ fn MethodCall lx, env, v, args, span, cspan, t:
                 ? x: ? (OutTyOf lx, (SubstTy lx, x))
                 nil: nil
             nil: nil
-        let ?atParameter = match ?byType:
+        let ?atAny = match ?byType:
             ? x: ? x
             nil: match lx.subst[tr.param]:
                 ? x: ? (OutTyOf lx, x)
                 nil: nil
+        # (a type Rust can be told here: a packed value's hidden type is none, and its
+        # call is the packed value's own, `Weigh (Hide 3)`; q12 wrote `<E'16 as
+        # Weighed_t>::weigh_f`, ts-ch03-existential-associated-type)
+        let ?atParameter = match ?atAny:
+            ? x: if ClosedOutBut (GenericsHere lx), x: ? x else: nil
+            nil: nil
         # (any call whose trait's parameter is known here names it, `<T as Trait>::m(..)`:
         # Rust may not learn it from the arguments even where Prism's types name it, a
         # parameter only a packed or erased value holds, `Order (Each staying, ..)` over

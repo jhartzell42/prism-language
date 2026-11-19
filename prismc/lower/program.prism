@@ -219,7 +219,21 @@ fn ?ValuedTypes lx, v, calleeSpan, args:
         let found = match ?noted:
             ? u: Fold (Filter u.tys, \|((q, t))| IsSolvedTy t), found0, \|m, ((q, t))| if HasKey m, q: m else: Insert m, q, (SubstTy lx, t)
             nil: found0
-        ?ClosedTypes rigids, found
+        # (a trait's widget method read at a type, `@Serve<<Game>> "ada"`: its trait's
+        # parameter is in no argument and no result, and the checker solved the want of
+        # the trait there, its impl note at the reading, which starts where the name does;
+        # trait-default-widget-read-as-a-value, whose reading q12 collected under no key)
+        let atImpls = Fold v.scheme.bounds, found, \|m, ((q, c))| if HasKey m, q: m else: match ?ImplNoteFrom lx, calleeSpan, c:
+            ? t: Insert m, q, t
+            nil: m
+        ?ClosedTypes rigids, atImpls
+
+# The type a want of a trait was solved at by a reading that starts where `span` does (a
+# name with its type arguments and its arguments after it): the reading's impl note.
+?ImplNoteFrom: unbounded fn Lx, Range, Text -> ?Ty
+fn ?ImplNoteFrom lx, span, cls:
+    let stem = "{lx.file}:{SpanStem span}:"
+    Fold (Keys lx.impls), nil, \|?found, k| if (IsSome ?found) or not (HasPrefix k, stem): ?found else: Fold (Or lx.impls[k], [[]]), nil, \|?f2, n| if (IsSome ?f2) or n.cls != cls: ?f2 else: if IsSolvedTy (SubstTy lx, n.ty): ? (SubstTy lx, n.ty) else: nil
 
 # Whether a type names a type parameter only as an element's or a blueprint's output
 # (`Element r o`, `@o`), nowhere else.
