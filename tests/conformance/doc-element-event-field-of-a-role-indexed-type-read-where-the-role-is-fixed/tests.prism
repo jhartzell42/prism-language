@@ -1,0 +1,7 @@
+# The tests of doc-element-event-field-of-a-role-indexed-type-read-where-the-role-is-fixed.
+emit Ui.*
+use App.*
+
+test replaced_once, @page:
+    build
+    click at 0/0.[0]/0

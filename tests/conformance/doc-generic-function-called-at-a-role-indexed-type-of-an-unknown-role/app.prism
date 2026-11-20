@@ -1,0 +1,122 @@
+# A generic function bounded by a trait, called at a role-indexed associated type whose
+# role the caller does not know (`?DecodedAs<<Reason d r>> bytes` in a function generic in
+# `d` and `r`, the library's `?ResponseOf`, `?AskedIn`, `?QueriedIn` and `?AnswerIn`):
+# the bound is the caller's trait's, `Reason d _: ^SerializableValue` for every role. The
+# sibling of doc-role-indexed-types-bounded-for-every-role-encoded, which asks the method
+# itself there. Isolated from doc-file-document-hosted-on-disk, whose crate q14 wrote
+# `decoded_as_o::<crate::prelude::Pod>(bytes)` for (rustc E0277: the trait bound
+# `prism_rtl::Pod: SerializableValue_t` is not satisfied).
+# Written by Claude (round after q13), 20 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type Request (r: Role d)
+    type Reason (r: Role d)
+
+trait ^SerializableValue s:
+    Encode: fn s -> [U8]
+    ~Decode: fn [U8] -> ~s
+
+trait ^RemoteDocument d where d: ^Document, Request d _: ^SerializableValue, Reason d _: ^SerializableValue:
+    Named: fn d -> Text
+
+type Response d (r: Role d) = choice:
+    Accepted
+    Declined (Reason d r)
+derive ^Eq, ^Debug
+
+RequestBytes: forall d (r: Role d). fn Fixed r, ?(Request d r) -> [U8] where d: ^RemoteDocument
+fn RequestBytes role, (? last) = Encode last
+fn RequestBytes role, nil = [[]]
+
+ResponseBytes: forall d (r: Role d). fn Response d r -> [U8] where d: ^RemoteDocument
+fn ResponseBytes Accepted = Utf8Bytes "+"
+fn ResponseBytes (Declined why) = Append (Utf8Bytes "-"), (Encode why)
+
+?ResponseOf: forall d (r: Role d). fn [U8] -> ?(Response d r) where d: ^RemoteDocument
+fn ?ResponseOf bytes = if (Take bytes, 1) == (Utf8Bytes "+"): ? Accepted else: match ?DecodedAs<<Reason d r>> (Drop bytes, 1):
+    ? why: ? (Declined why)
+    nil: nil
+
+?DecodedAs: forall t. fn [U8] -> ?t where t: ^SerializableValue
+fn ?DecodedAs bytes = match ~Decode<<t>> bytes:
+    ~ value: ? value
+    otherwise: nil
+
+type TallyRole = choice:
+    Teller
+    Keeper
+derive ^Eq, ^Ord, ^Debug
+
+type Add = choice:
+    Add Nat
+derive ^Eq, ^Debug
+
+type Clear = choice:
+    Clear
+derive ^Eq, ^Debug
+
+type TellerReason = choice:
+    StopsAt Nat
+derive ^Eq, ^Debug
+
+type KeeperReason = choice:
+    NothingToClear
+derive ^Eq, ^Debug
+
+# each written as the text of its one number, or as a word
+impl ^SerializableValue Add:
+    fn Encode (Add n) = Utf8Bytes "{n}"
+    fn ~Decode bytes = match ~Utf8Text bytes:
+        ~ text: match ~ParseNat text:
+            ~ n: ~ Add n
+            otherwise: Error(kind=Prelude.NotANumber, message="not an add")
+        otherwise: Error(kind=Prelude.NotANumber, message="not an add")
+
+impl ^SerializableValue Clear:
+    fn Encode Clear = Utf8Bytes "clear"
+    fn ~Decode bytes = ~ Clear
+
+impl ^SerializableValue TellerReason:
+    fn Encode (StopsAt n) = Utf8Bytes "{n}"
+    fn ~Decode bytes = match ~Utf8Text bytes:
+        ~ text: match ~ParseNat text:
+            ~ n: ~ StopsAt n
+            otherwise: Error(kind=Prelude.NotANumber, message="not a reason")
+        otherwise: Error(kind=Prelude.NotANumber, message="not a reason")
+
+impl ^SerializableValue KeeperReason:
+    fn Encode NothingToClear = Utf8Bytes "nothing"
+    fn ~Decode bytes = ~ NothingToClear
+
+type Board = choice:
+    Board
+
+impl ^Document Board:
+    type Role = TallyRole
+    type Request Teller = Add
+    type Request Keeper = Clear
+    type Reason Teller = TellerReason
+    type Reason Keeper = KeeperReason
+
+impl ^RemoteDocument Board:
+    fn Named board = "board"
+
+Text: fn [U8] -> Text
+fn Text bytes = match ~Utf8Text bytes:
+    ~ text: text
+    otherwise: "?"
+
+SaidTeller: fn ?(Response Board Teller) -> Text
+fn SaidTeller (? Accepted) = "accepted"
+fn SaidTeller (? (Declined (StopsAt n))) = "declined, stops at {n}"
+fn SaidTeller nil = "unreadable"
+
+@page: @unit
+@page:
+    Ui.Label($text=$"add: {Text (RequestBytes<<Board, Teller>> Fixed<<Teller>>, (? (Add 3)))}")              # 0
+    Ui.Label($text=$"clear: {Text (RequestBytes<<Board, Keeper>> Fixed<<Keeper>>, (? Clear))}")              # 1
+    let declined = ResponseBytes<<Board, Teller>> (Declined (StopsAt 5))
+    Ui.Label($text=$"sent {Text declined}, read {SaidTeller (?ResponseOf<<Board, Teller>> declined)}")      # 2

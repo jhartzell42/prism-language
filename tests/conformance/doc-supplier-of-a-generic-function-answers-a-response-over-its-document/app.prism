@@ -1,0 +1,65 @@
+# A supplier a generic function gives, answering a request place with a response over the
+# function's own document (`@ (Accepted on !requests)` at `Response d r`, in a function
+# generic in `d`: the library's `SupplierFrom`, `@ !Filter (?ResponseTo<<d>> role, path,
+# !responses)`). `Response d r` names `d` in no field. Isolated from
+# doc-file-document-hosted-on-disk, whose crate q14 answered with
+# `crate::Output::seat_request_recoded(v.clone())` in `supplier_from_f<D: Clone +
+# StateDocument_t + Document_t>` (rustc E0277: the trait bound `D: prism_rtl::ToPod` is
+# not satisfied, required for `Response<D>` to implement `ToPod`).
+# Written by Claude (round after q13), 20 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type Request (r: Role d)
+    type Reason (r: Role d)
+
+type Response d (r: Role d) = choice:
+    Accepted
+    Declined (Reason d r)
+derive ^Eq, ^Debug
+
+family Seat d (r: Role d) where d: ^Document
+
+tag Seat.Request of Element !(Response d r):
+    !requests: Request d r
+
+Supplying: forall d (r: Role d). fn Fixed r -> (forall o. fn Path, prompt Element (Seat.* d r) o -> @o) where d: ^Document
+fn Supplying role = \|path, prompt element| match element:
+    Seat.Request(!requests=!requests): @ (Accepted on !requests)
+
+type GameRole = choice:
+    Player
+    Spectator
+derive ^Eq, ^Ord, ^Debug
+
+type Move = choice:
+    Move Nat
+derive ^Eq, ^Debug
+
+type Game = choice:
+    Game
+
+impl ^Document Game:
+    type Role = GameRole
+    type Request Player = Move
+    type Request Spectator = Never
+    type Reason Player = Text
+    type Reason Spectator = Never
+
+Said: fn Response Game Player -> Text
+fn Said Accepted = "accepted"
+fn Said (Declined why) = "declined: {why}"
+
+@Seat: fn prompt !Ui.Click -> @$Text emit Seat.* Game Player
+fn @Seat !fire:
+    !response <- Seat.Request(!requests=((Move 1) on !fire))               # 0
+    $said <- "nothing yet" then Said !response
+    @ $said
+
+@page: @unit
+@page:
+    !click <- Ui.Button($label=$"move")                                    # 0
+    (($said, $tree)) <- @Host (@Seat !click), (Supplying<<Game, Player>> Fixed<<Player>>)   # 1
+    Ui.Label($text=$"the seat heard {$said}")                              # 2

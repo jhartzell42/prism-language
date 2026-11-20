@@ -1,0 +1,69 @@
+# An element's event field of a role-indexed associated type (`!requests: Request d r` of
+# the library's `Seat.Request`), read out of a guest (an existential over the role) in an
+# arm that fixes the role, where the field's firings are matched at the type that role
+# gives (the library's `!ReplacesAt`: `Fixed<<Editor>>: match element: Seat.Request(
+# !requests=!requests): match !requests: Replace bytes: bytes`). Isolated from
+# doc-file-document-hosted-on-disk, whose crate q14 mapped the element's event, plain data
+# there, with a closure over the editor's request type (rustc E0631: expected closure
+# signature `fn(&prism_rtl::Pod) -> _`, found `fn(&FileRequest) -> _`).
+# Written by Claude (round after q13), 20 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type Request (r: Role d)
+
+family Seat d (r: Role d) where d: ^Document
+
+tag Seat.Request of Element unit:
+    !requests: Request d r
+
+type Guest d = any (r: Role d): ((Fixed r, Elem (Ui.* | Seat.* d r)))
+
+type FileRole = choice:
+    Editor
+    Viewer
+derive ^Eq, ^Ord, ^Debug
+
+type FileRequest = choice:
+    Replace Text
+derive ^Eq, ^Debug
+
+type File = choice:
+    File
+
+impl ^Document File:
+    type Role = FileRole
+    type Request Editor = FileRequest
+    type Request Viewer = Never
+
+!ReplacesAt: fn Guest File -> !Text
+fn !ReplacesAt guest = match guest:
+    any ((role, element)): match role:
+        Fixed<<Editor>>: match element:
+            Seat.Request(!requests=!requests): match !requests:
+                Replace text: text
+            otherwise: never
+        Fixed<<Viewer>>: never
+
+EditorGuest: fn Elem (Ui.* | Seat.* File Editor) -> Guest File
+fn EditorGuest element = any ((Fixed<<Editor>>, element))
+
+?LastOf: fn [a] -> ?a
+fn ?LastOf all = Fold all, nil, \|?last, each| ? each
+
+@seat: @unit emit Ui.* | Seat.* File Editor
+@seat:
+    !click <- Ui.Button($label=$"replace")                                 # 0
+    Seat.Request(!requests=((Replace "new text") on !click))               # 1
+
+@page: @unit
+@page:
+    ((ignore, $tree)) <- @Host @seat, \|path, prompt element| match element:   # 0
+        Seat.Request(..): @ unit
+        otherwise: @Element element
+    !replaces <- for at, $element <- $tree:                                # 1, at each place
+        @Switch (!ReplacesAt (EditorGuest $element))
+    $last <- "nothing" then !Filter (?LastOf (Values !replaces))
+    Ui.Label($text=$"replaced with {$last}")                               # 2

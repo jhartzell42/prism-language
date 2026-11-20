@@ -1,0 +1,15 @@
+# Derived by hand from Semantics ch. 9 (a supplier's `@ !event` answers each firing a tick late, so the request of tick 1 is accepted in tick 2) and Part III ch. 6 (the response is the player's); the tick the label moves in is a guess a real run may correct.
+test moved_once
+
+tick 0
+  added:
+    0: Ui.Button(label="move")
+    2: Ui.Label(text="the seat heard nothing yet")
+
+tick 1
+  in:
+    0: click
+
+tick 2
+  changed:
+    2: Ui.Label(text="the seat heard accepted")

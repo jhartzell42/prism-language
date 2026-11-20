@@ -1,0 +1,8 @@
+# The tests of doc-supplier-of-a-generic-function-answers-a-response-over-its-document.
+emit Ui.*
+use App.*
+
+test moved_once, @page:
+    build
+    click at 0
+    tick

@@ -1,0 +1,13 @@
+# Derived by hand from Part III ch. 6 (opening a guest and fixing its role tells the arm the request's type) and Semantics ch. 9 (the host forwards the seat's button at host/[0]/0 and answers its request place itself); the tick the label moves in is a guess a real run may correct.
+test replaced_once
+
+tick 0
+  added:
+    0/0.[0]/0: Ui.Button(label="replace")
+    2: Ui.Label(text="replaced with nothing")
+
+tick 1
+  in:
+    0/0.[0]/0: click
+  changed:
+    2: Ui.Label(text="replaced with new text")

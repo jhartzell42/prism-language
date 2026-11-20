@@ -1,0 +1,6 @@
+# The tests of doc-generic-function-called-at-a-role-indexed-type-of-an-unknown-role.
+emit Ui.*
+use App.*
+
+test written_at_each_role, @page:
+    build
