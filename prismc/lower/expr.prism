@@ -3194,7 +3194,10 @@ fn ArgsFor lx, env, v, args:
         # is plain data in its Rust signature: the argument recoded from its concrete type)
         let p = Or ps[i], TyErr
         let erasedAt = (HasOpenIndexedAssoc (Peel p)) and (LayerOf p) == LyPlain and not toUnbounded and not bounded
-        if erasedAt: XRef (XCallAt (HelperRef "recode"), [[(ErasedSignatureOut lx, (Peel p))]], [[(ArgumentAt lx, env, p, a.value)]])
+        # (the argument's type said, where Rust can be told it: a bare `nil` names none,
+        # `AskBytes<<Tally, Watcher>> Fixed<<Watcher>>, nil` at `?Never`, rustc E0282,
+        # doc-role-indexed-types-bounded-serializable-by-pod-and-never)
+        if erasedAt: XRef (XCallAt (HelperRef "recode"), [[(ErasedSignatureOut lx, (Peel p))]], [[(XRef (SaidAs lx, (Own (ValueOf lx, env, a.value)), (OutTyOf lx, (Peel (TypeAt lx, a.value.span)))))]])
         else: if toUnbounded: XRef (AsJobValue lx, env, a.value)
         else: if bounded: ValueArgument lx, env, a.value
         else: if wholeAt:

@@ -141,7 +141,7 @@ fn ClausesBody lx, env, clauses, names, ptys, Body, label, t, ?result:
         match ?result:
             ? r:
                 let atBody = OutTyOf lx, (SubstTy lx, (Peel r))
-                if (HasOpenIndexedAssoc (Peel r)) and atBody != t: XCallAt (HelperRef "recode"), [[t]], [[(XRef (XBlock [[(DoLet (PaTyped (PaBind "at_body"), atBody), value)]], (XVar "at_body")))]] else: value
+                if (LayerOf r) == LyPlain and (HoldsPod t) and atBody != t: XCallAt (HelperRef "recode"), [[t]], [[(XRef (XBlock [[(DoLet (PaTyped (PaBind "at_body"), atBody), value)]], (XVar "at_body")))]] else: value
             nil: value
     else:
         let scrut = match scrutIx:
@@ -191,7 +191,7 @@ fn ClausesBody lx, env, clauses, names, ptys, Body, label, t, ?result:
             # trait's method gives plain data,
             # doc-impl-method-giving-an-associated-type-every-role-gives-one-type)
             let heldPlain = match ?result:
-                ? r: HasOpenIndexedAssoc (Peel r)
+                ? r: (LayerOf r) == LyPlain and HoldsPod t
                 nil: False
             let answered = if (lxc.subst != lx.subst or heldPlain) and atVariant != t: XCallAt (HelperRef "recode"), [[t]], [[(XRef (XBlock [[(DoLet (PaTyped (PaBind "at_variant"), atVariant), value)]], (XVar "at_variant")))]] else: value
             XArm(pat=pa, conds=conds, body=answered)
