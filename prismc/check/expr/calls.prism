@@ -170,7 +170,7 @@ fn CallGlobal env, st0, n, args, span, explicit, cspan:
                     # no call is, `InferGlobal`: the lowering reads a generic widget applied
                     # as a value at them, `$ (@Teller<<Quiet>> "ada")`, whose `o` no argument
                     # and no result names; the prelude's own are never lowered by their uses)
-                    let st2n = if (IsGenericUse v) and v.home != "Prelude": NoteInst st2, n.span, qk, v.scheme, inst else: st2
+                    let st2n = if IsNotedUse v: NoteInst st2, n.span, qk, v.scheme, inst else: st2
                     let st2u = if IsGenericUse v: NoteGenericUse st2n, qk, v.scheme.qs, n.span, inst else: st2n
                     let st3a = NoteCallee (NoteMethodUse st2u, v, span), n.span, cspan, t
                     let st3 = if (BareName qk) == "Min": NoteSizeTy st3a, span, (Walk st3a, t) else: st3a

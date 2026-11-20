@@ -462,11 +462,20 @@ fn InferGlobal env, st0, n, span:
                     # (a generic definition's use is noted with what the checker solved
                     # its variables at, for the lowering, `NoteInst`: a generic widget
                     # inlined at the call is lowered at those types)
-                    let st3 = if IsGenericUse v: NoteInst (NoteGenericUse st2, qk, v.scheme.qs, span, inst), span, qk, v.scheme, inst else: st2
+                    # (a program's trait's method too, with no growth to follow: its
+                    # default widget is inlined at the types the use gives the trait's
+                    # parameter and its own, `@Panel<<Game, Player>>`, `IsNotedUse`)
+                    let st3 = if IsGenericUse v: NoteInst (NoteGenericUse st2, qk, v.scheme.qs, span, inst), span, qk, v.scheme, inst else: if IsNotedUse v: NoteInst st2, span, qk, v.scheme, inst else: st2
                     ((t, st3))
                 nil: match env.g.ctors[qk]:
                     ? c: CtorValue env, st, c, span
                     nil: ((TyErr, (Err st, "unknown-name", span, "`{SNameKey n}` has no signature line or type")))
+
+# Whether a use of this value by its name is noted with the types it gives the value's
+# type variables, for the lowering (`NoteInst`): a generic function's or widget's, and a
+# method's of a trait of the program.
+IsNotedUse: fn ValInfo -> Bool
+fn IsNotedUse v = (Len v.scheme.qs) > 0 and v.home != "Prelude"
 
 # Whether a use of this value by its name is one the growth check follows (`GrowthCheck`;
 # ruling PG): a definition with type parameters, other than a trait's method, which an
