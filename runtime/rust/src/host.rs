@@ -1483,8 +1483,13 @@ impl<E: Clone + Eq + 'static, A: OutputOf<E>> HostRow<E, A> {
     /// The live element the supplier sees: the place's level at the build, and its level
     /// over time, the row's entry.
     fn element(self: &Rc<Self>, identity: E) -> Element<E> {
-        let me = Rc::downgrade(self);
-        let read = Rc::new(move |cx: &Cx| me.upgrade().expect("a live element outlives its host's row").entry(cx));
+        // (read from the place's entry, which the live element holds: a dynamic the
+        // supplier made of the element's level may be read once more in the tick its row
+        // leaves, and reads the entry's last level then, as a node's dynamic reads its
+        // hold's last value after the node left; reading through the row panicked there,
+        // "a live element outlives its host's row", tests/documents/tally)
+        let place = self.place.clone();
+        let read = Rc::new(move |cx: &Cx| place.current(cx));
         Element::Live(Live { identity, level: Dynamic { owner: None, read, updates: self.level_moved.clone() }, entry: self.place.clone(), requests: self.requests.clone() })
     }
 
