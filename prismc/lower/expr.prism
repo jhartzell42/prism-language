@@ -993,33 +993,36 @@ fn AnyValue lx, env, x, t:
             else:
                 # each hidden variable's variant at the packing site, beside the value (MB)
                 let found = Or (?ParamMatch b, (TypeAt lx, x.span), {{}}), {{}}
-                # (packed as an opened arm reads it: a part of an associated type at the
-                # existential's own variable is plain data there, so the value given at a
-                # known variant is recoded to it, `any ((Fixed<<Watcher>>, "ada"))` of a
-                # `SeatKey Count` opened as `(Nat, Pod)`; q11 panicked, "two existentials
-                # of different types met",
-                # doc-role-generic-call-lifted-over-an-event-in-an-opened-existential)
-                let erased = ErasedSignatureOut lx, b
+                # (packed by its parts, each at the type it has here and, where that is
+                # plain data, with its plain data, `PackedParts`: the code that opens the
+                # value may hold a part at another type, an associated type at the hidden
+                # variable plain data in a function generic in the document and the
+                # type itself where the document is known, and reads it through its
+                # plain data then, `UnpackedAt`; q11 to q20 packed and unpacked one
+                # tuple type and panicked, "two existentials of different types met",
+                # wherever the two sides read the type differently,
+                # doc-file-document-hosted-on-disk)
                 let atSite = OutTyOf lx, (Peel (TypeAt lx, x.span))
-                let said = SaidAs lx, v, atSite
-                let packedValue = if (HasOpenIndexedAssoc b) and erased != atSite: ErasedParts lx, b, (Peel (TypeAt lx, x.span)), said else: said
+                let packedValue = PackedParts lx, (Peel (TypeAt lx, x.span)), (SaidAs lx, v, atSite)
                 let packing = Fold vs, (XCall (RefRuntime "prism_rtl::Packed::of"), [[packedValue]]), \|acc, q| XMethod acc, "with_kind", [[(ExistsNumber lx, q, found[q])]]
                 VlOwned (XMethod packing, "packed", [[]]), packedTy
         otherwise: VlOwned (XCast (XCall (RefRuntime "std::Rc::new"), [[v]]), OutShowAny), OutShowAny
 
-# A value read as its type holds it with its open associated types plain data: a tuple
-# part by part, so a part that is no plain data (an element, a blueprint) stays as it is
-# beside one recoded (`((Fixed r, SeatId d r, Ui.*))` packed, q12's `recode` of the whole
-# tuple, rustc E0277, doc-file-document-hosted-on-disk); anything else whole.
-ErasedParts: unbounded fn Lx, Ty, Ty, Ex -> Ex
-fn ErasedParts lx, open, site, value = match ((open, site)):
-    (((TyTuple os), (TyTuple ss))) if (Len os) == (Len ss):
-        let parts = Each (Range0 (Len os)), \|i|
-            let o = Or os[i], TyErr
-            let s = Or ss[i], TyErr
-            if (HasOpenIndexedAssoc o) and (ErasedSignatureOut lx, o) != (OutTyOf lx, s): ErasedParts lx, o, s, (XPart (XVar "erased_whole"), i) else: XPart (XVar "erased_whole"), i
-        XBlock [[(DoLet (PaBind "erased_whole"), value)]], (XTuple parts)
-    otherwise: XCallAt (HelperRef "recode"), [[(ErasedSignatureOut lx, open)]], [[XRef value]]
+# The parts of a value an existential over kinded variables hides, as the runtime keeps
+# them (prism_rtl's `Part`): a tuple's parts, or the one value; a part whose type is plain
+# data that Rust can tell so here with its plain data (`IsDataPart`).
+PackedParts: unbounded fn Lx, Ty, Ex -> Ex
+fn PackedParts lx, site, value = match site:
+    TyTuple parts: XBlock [[(DoLet (PaBind "packed_whole"), value)]], (XVec (Each (Range0 (Len parts)), \|i| PartOf (OutTyOf lx, (Or parts[i], TyErr)), (XPart (XVar "packed_whole"), i)))
+    otherwise: XVec [[(PartOf (OutTyOf lx, site), value)]]
+
+PartOf: unbounded fn OutTy, Ex -> Ex
+fn PartOf t, value = XCall (RefRuntime (if IsDataPart t: "prism_rtl::Part::data" else: "prism_rtl::Part::held")), [[value]]
+
+# Whether a part's type is plain data Rust can tell so where it stands: no type
+# parameter's (a generic function asks no `ToPod` of one), and nothing live.
+IsDataPart: unbounded fn OutTy -> Bool
+fn IsDataPart t = (Podable t) and not (HoldsGen t)
 
 # A declaration with no body that names its runtime function (ruling RT: `SeatPathOf:
 # fn Path -> Path = runtime "documents::seat_path_of"`), and no definition: a call of
@@ -1264,35 +1267,15 @@ fn OpenedAt lx, env, label, vs, kinds, fresh, i, p, arm, pty, body, t = match vs
         # as types are, which the lowering erases)
         otherwise: OpenedAt lx, env, label, vs, kinds, fresh, i + 1, p, arm, pty, body, t
 
-# A packed value read back in an opened arm: unpacked at the type it was packed at, the
-# existential's body with a part of an associated type at its own variable plain data
-# (`AnyValue`), whatever variant the arm is lowered at; then such a part read at the type
-# that variant gives, part by part of a tuple (`ReadParts`). A guest packed by a function
-# generic in the document, `((Fixed r, SeatId d r, Elem ..))` as `(Nat, Pod, Elem)`, is
-# opened by `!ReplacesAt` at the editor's `(Nat, (), Elem)` (q16 unpacked it at that
-# type and the runtime panicked, "two existentials of different types met",
-# doc-file-document-hosted-on-disk).
+# A packed value read back in an opened arm, part by part (`PackedParts`): each part at
+# the type the arm has for it at the variant it is lowered at, a part of plain data read
+# through its plain data where it was packed at another type (prism_rtl's `part_data`).
 UnpackedAt: unbounded fn Lx, (Text ==> Ty), Ty, Ty, Ex -> Ex
 fn UnpackedAt lx, fresh, pty, body, packed:
-    # (the packed type is the existential's body as its type says it, every associated
-    # type at its own variable plain data, `ErasedSignatureOut`: the type the checker
-    # gives the arm's pattern has already read one that an impl's one equation decides at
-    # every variant, `SeatId File r` as `unit`, and a function generic in the document
-    # packs it as plain data all the same)
-    let whole = XCallAt (RefRuntime "prism_rtl::unpacked"), [[(ErasedSignatureOut lx, body)]], [[(XRef packed)]]
-    if (ErasedSignatureOut lx, body) == (OutTyOf lx, pty): whole else: ReadParts lx, body, pty, whole
-
-# The reverse of `ErasedParts`: a value held with its open associated types plain data,
-# read at the types a lowering that knows them gives, a tuple part by part.
-ReadParts: unbounded fn Lx, Ty, Ty, Ex -> Ex
-fn ReadParts lx, held, ty, value = match ((held, ty)):
-    (((TyTuple heldParts), (TyTuple parts))) if (Len heldParts) == (Len parts):
-        let read = Each (Range0 (Len parts)), \|i|
-            let part = Or parts[i], TyErr
-            let heldPart = Or heldParts[i], TyErr
-            if (ErasedSignatureOut lx, heldPart) != (OutTyOf lx, part): ReadParts lx, heldPart, part, (XPart (XVar "held_whole"), i) else: XPart (XVar "held_whole"), i
-        XBlock [[(DoLet (PaBind "held_whole"), value)]], (XTuple read)
-    otherwise: XCallAt (HelperRef "recode"), [[(OutTyOf lx, ty)]], [[XRef value]]
+    let Read = \|i, part| XCallAt (RefRuntime (if IsDataPart (OutTyOf lx, part): "prism_rtl::part_data" else: "prism_rtl::part_held")), [[(OutTyOf lx, part)]], [[(XRef packed), (XIndex i)]]
+    match pty:
+        TyTuple parts: XTuple (Each (Range0 (Len parts)), \|i| Read i, (Or parts[i], TyErr))
+        otherwise: Read 0, pty
 
 # `match s:` of several arms over an existential of kinded variables, some `any p` (Part
 # III ch. 6: its arms by the role's `Fixed<<Variant>>` and what is under it): the arms

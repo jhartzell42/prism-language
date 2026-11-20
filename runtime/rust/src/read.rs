@@ -26,9 +26,36 @@ impl Pattern {
     pub fn any() -> Pattern {
         Pattern(Pod::name(ANY))
     }
+    /// The pattern with each bare name that is one of `names` replaced by that name's
+    /// value: a `check` line's pattern names a value the program declares (`=> ~ fresh`,
+    /// a chess square `e2`), which the compiled program gives beside the line's value.
+    pub fn with_names(&self, names: &[(String, Pod)]) -> Pattern {
+        Pattern(named(&self.0, names))
+    }
     /// Whether `v` matches.
     pub fn matches(&self, v: &Pod) -> bool {
         matches(&self.0, v)
+    }
+}
+
+fn named(p: &Pod, names: &[(String, Pod)]) -> Pod {
+    let fields = |fs: &Vec<(std::rc::Rc<str>, Pod)>| fs.iter().map(|(n, v)| (n.clone(), named(v, names))).collect();
+    let items = |xs: &Vec<Pod>| xs.iter().map(|x| named(x, names)).collect();
+    match p {
+        Pod::Choice(c, a) if a.is_empty() => match names.iter().find(|(n, _)| **n == **c) {
+            Some((_, value)) => value.structural(),
+            None => p.clone(),
+        },
+        Pod::Choice(c, a) => Pod::Choice(c.clone(), items(a)),
+        Pod::Record(n, fs) => Pod::Record(n.clone(), fields(fs)),
+        Pod::Element(n, fs) => Pod::Element(n.clone(), fields(fs)),
+        Pod::Tuple(xs) => Pod::Tuple(items(xs)),
+        Pod::Array(xs) => Pod::Array(items(xs)),
+        Pod::Map(es) => Pod::Map(es.iter().map(|(k, v)| (named(k, names), named(v, names))).collect()),
+        Pod::Some(x) => Pod::Some(Box::new(named(x, names))),
+        Pod::Ok(x) => Pod::Ok(Box::new(named(x, names))),
+        Pod::Failed(x) => Pod::Failed(Box::new(named(x, names))),
+        other => other.clone(),
     }
 }
 
@@ -39,14 +66,6 @@ fn matches(p: &Pod, v: &Pod) -> bool {
         (rest || ps.len() == fs.len())
             && ps.iter().filter(|(n, _)| &**n != REST).all(|(n, p)| fs.iter().any(|(m, v)| m == n && matches(p, v)))
     };
-    // A value whose type prints by its own `impl ^Debug` (`Pod::Shown`: a chess square
-    // prints `e2`) matches the pattern that spells what it prints, as a transcript
-    // would show it; any other pattern is matched against its structure.
-    if let Pod::Shown(text, _) = v {
-        if *crate::print::show(p) == *text.0 {
-            return true;
-        }
-    }
     match (p, v.structure()) {
         (Pod::Choice(c, a), _) if &**c == ANY && a.is_empty() => true,
         (Pod::Path(a), Pod::Path(b)) => crate::print::path(a) == crate::print::path(b),
@@ -58,7 +77,8 @@ fn matches(p: &Pod, v: &Pod) -> bool {
         (Pod::Tuple(ps), Pod::Tuple(vs)) | (Pod::Array(ps), Pod::Array(vs)) => all(ps, vs),
         (Pod::Map(ps), Pod::Map(es)) => ps.len() == es.len() && ps.iter().zip(es).all(|((pk, pv), (k, v))| matches(pk, k) && matches(pv, v)),
         (Pod::Some(p), Pod::Some(v)) | (Pod::Ok(p), Pod::Ok(v)) | (Pod::Failed(p), Pod::Failed(v)) => matches(p, v),
-        (p, v) => p == v,
+        // (a value's own print, `Pod::Shown`, takes no part: the structures are compared)
+        (p, v) => *p == v.structural(),
     }
 }
 

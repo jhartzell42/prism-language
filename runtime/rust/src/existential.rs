@@ -199,6 +199,53 @@ pub fn unpacked<T: Clone + 'static>(p: &Packed) -> T {
     p.held::<T>().clone()
 }
 
+/// One part of the value an existential over kinded variables hides (the parts of its
+/// tuple, or the one value): the part at the type it was packed at and, when that type is
+/// plain data, how to tell it as plain data. The code that packs a value and the code
+/// that opens it may hold one part at two types, plain data where an associated type's
+/// index is a role only the value knows (a function generic in a document) and the type
+/// itself where the role or the document is known: a part read at another type than it
+/// was packed at goes through its plain data.
+#[derive(Clone)]
+pub struct Part {
+    value: Rc<dyn Any>,
+    pod: Option<Rc<dyn Fn() -> Pod>>,
+}
+
+impl Part {
+    /// A part whose type is plain data.
+    pub fn data<T: ToPod + Clone + 'static>(value: T) -> Part {
+        let held = value.clone();
+        Part { value: Rc::new(value), pod: Some(Rc::new(move || held.to_pod())) }
+    }
+    /// A part that is no plain data (a live element, a blueprint) or whose type the
+    /// packing code cannot tell as plain data (a type parameter's): read back only at
+    /// its own type.
+    pub fn held<T: 'static>(value: T) -> Part {
+        Part { value: Rc::new(value), pod: None }
+    }
+}
+
+fn part(p: &Packed, i: usize) -> &Part {
+    p.held::<Vec<Part>>().get(i).expect("a prismc bug: an existential opened for a part it was not packed with")
+}
+
+/// Part `i` of a packed value at a type that is plain data: the part itself where it was
+/// packed at this type, else its plain data read at this type.
+pub fn part_data<T: FromPod + Clone + 'static>(p: &Packed, i: usize) -> T {
+    let part = part(p, i);
+    if let Some(same) = part.value.downcast_ref::<T>() {
+        return same.clone();
+    }
+    let pod = (part.pod.as_ref().expect("a prismc bug: a part of an existential packed at another type and as no plain data"))();
+    T::from_pod(&pod).unwrap_or_else(|fault| panic!("a prismc bug: a part of an existential did not read at its type: {fault:?}"))
+}
+
+/// Part `i` of a packed value at a type that is no plain data: the part itself.
+pub fn part_held<T: Clone + 'static>(p: &Packed, i: usize) -> T {
+    same::<T>(&*part(p, i).value).clone()
+}
+
 /// The variant number of an existential's kinded variable `i` (the program's number type),
 /// which the code that opens it matches on before it reads the value back.
 pub fn kind_of<N: Clone + 'static>(p: &Packed, i: usize) -> N {

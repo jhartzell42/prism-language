@@ -54,6 +54,8 @@ type Lines = Box<dyn Fn() -> Vec<Result<Pod, Fault>>>;
 pub struct TestWorld {
     programs: BTreeMap<String, Builder>,
     checks: BTreeMap<String, Lines>,
+    /// The values a `check` block's patterns name, by block (`Pattern::with_names`).
+    check_names: BTreeMap<String, Box<dyn Fn() -> Vec<(String, Pod)>>>,
 }
 
 /// A script's transcript, its failures, and the exit code: 0 when every test passes, 1
@@ -83,6 +85,12 @@ impl TestWorld {
     pub fn program<P: Program + 'static>(mut self, name: &str) -> TestWorld {
         let build: Builder = Box::new(|args, ready| P::build(args, ready).map(|(p, o)| (Box::new(p) as Box<dyn Program>, o)));
         self.programs.insert(name.to_string(), build);
+        self
+    }
+
+    /// Register the values a compiled `check` block's patterns name, each by its name.
+    pub fn check_names(mut self, name: &str, names: impl Fn() -> Vec<(String, Pod)> + 'static) -> TestWorld {
+        self.check_names.insert(name.to_string(), Box::new(names));
         self
     }
 
@@ -130,13 +138,14 @@ impl TestWorld {
     fn run_check(&self, c: &CheckBlock, out: &mut String, failures: &mut Vec<String>) {
         let _ = writeln!(out, "check {}", c.name);
         let compiled = self.checks.get(&c.name).map(|f| f());
+        let names = self.check_names.get(&c.name).map(|f| f()).unwrap_or_default();
         for (i, (expr, pat, line)) in c.lines.iter().enumerate() {
             let value = match &compiled {
                 Some(vs) => vs.get(i).cloned().unwrap_or_else(|| Err(Fault::new("Test.Check", "no compiled line"))).map_err(|f| f.to_string()),
                 None => read::value(expr),
             };
             match value {
-                Ok(v) if pat.matches(&v) => {
+                Ok(v) if pat.with_names(&names).matches(&v) => {
                     let _ = writeln!(out, "{}: ok", i + 1);
                 }
                 v => {

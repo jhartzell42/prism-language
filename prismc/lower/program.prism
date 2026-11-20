@@ -1774,7 +1774,40 @@ fn KindRef lx, kind = if kind == "Element": elemRef else: RefIn lx, (Or lx.g.typ
 
 # A `check` block: each line's value as plain data, or the fault that stopped it.
 CheckDefOf: unbounded fn Lx, CheckDecl -> CheckDef
-fn CheckDefOf lx, c = CheckDef(name=c.name.name, lines=(Each c.lines, \|l| XCtor (RefRuntime "std::Ok"), [[(XMethod (Own (ValueOf lx, emptyEnv, l.expr)), "to_pod", [[]])]]))
+fn CheckDefOf lx, c = CheckDef(named=(CheckNamed lx, c), name=c.name.name, lines=(Each c.lines, \|l| XCtor (RefRuntime "std::Ok"), [[(XMethod (Own (ValueOf lx, emptyEnv, l.expr)), "to_pod", [[]])]]))
+
+# The values a `check` block's patterns name: a bare name in a line's pattern that a
+# `let` of the program declares is that value there, not a case of that name (`=> ~
+# fresh`, `=> [[(Moving e2, e4)]]` in examples/chess, which q20's Test World read as the
+# names alone and never matched). Each is given as plain data beside the lines' values.
+CheckNamed: unbounded fn Lx, CheckDecl -> [((Text, Ex))]
+fn CheckNamed lx, c:
+    let names = Fold c.lines, [[]], \|acc, l| match l.?pattern:
+        ? p: Fold (PatternValueNames p), acc, \|acc2, n| if Fold acc2, False, \|seen, m| seen or (SNameKey m) == (SNameKey n): acc2 else: Push acc2, n
+        nil: acc
+    Fold names, [[]], \|acc, n| match ResolveValue lx.g, lx.home, n:
+        ((? qk, ignore)): if Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsPlainLetDef lx, d): Push acc, ((SNameKey n, (XMethod (XCall (ValueRef lx, qk), [[]]), "to_pod", [[]]))) else: acc
+        otherwise: acc
+
+# A `let` that has a getter: one of a value, no blueprint (`DefItems`).
+IsPlainLetDef: unbounded fn Lx, Def -> Bool
+fn IsPlainLetDef lx, d = match d.body:
+    DbLet l: match Peel (TypeAt (InModule lx, d.file, d.home), l.value.span):
+        TyAt ignore, ignore2: False
+        otherwise: True
+    otherwise: False
+
+# The bare names in a pattern, each once where it stands.
+PatternValueNames: unbounded fn Pattern -> [SName]
+fn PatternValueNames p = match p.kind:
+    PName n: if (Len n.path) == 1: [[n]] else: [[]]
+    PCtor ignore, ps: Fold ps, [[]], \|acc, q| Append acc, (PatternValueNames q)
+    PRecord ignore, fs, ignore2: Fold fs, [[]], \|acc, f| Append acc, (PatternValueNames f.pattern)
+    PSigil ignore, q: PatternValueNames q
+    PTuple ps: Fold ps, [[]], \|acc, q| Append acc, (PatternValueNames q)
+    PArray ps: Fold ps, [[]], \|acc, q| Append acc, (PatternValueNames q)
+    PGroup q: PatternValueNames q
+    otherwise: [[]]
 
 # The default of a trait below an impl takes for its method of this bare name (ruling SD):
 # the default's definition key and the trait below.

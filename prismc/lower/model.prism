@@ -666,6 +666,8 @@ derive ^Eq, ^Debug
 type CheckDef = record:
     name: Text
     lines: [Ex]
+    # the values its patterns name (`=> ~ fresh`), each as plain data, by name
+    named: [((Text, Ex))]
 derive ^Eq, ^Debug
 
 # A program's own trait: each method an associated function over `Self`, a default's body.

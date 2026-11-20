@@ -748,6 +748,11 @@ fn NodeFallible model, path = Fold model.mods, False, \|f, m| Fold m.items, f, \
     ItNode n: f2 or ("{m.name}::{n.name}" == path and n.fallible)
     otherwise: f2
 
+# The values a `check` block's patterns name, registered beside its lines
+# (`TestWorld::check_names`); nothing for a block that names none.
+CheckNames: unbounded fn CheckDef -> Text
+fn CheckNames c = if (Len c.named) == 0: "" else: ".check_names(\"{c.name}\", || vec![{Join (Each c.named, \|((n, x))| "(\"{n}\".to_string(), {Expression x})"), ", "}])\n"
+
 # The crate's files: path and text.
 EmitCrate: unbounded fn Model, Text, [Text] -> [((Text, Text))]
 fn EmitCrate model, runtime, scripts:
@@ -759,7 +764,7 @@ fn EmitCrate model, runtime, scripts:
     let mods = Concat (Each (Filter paths, \|p| not (Contains p, ":")), \|p| "mod {p};\n")
     let programs = Join (Each (AllPrograms model), \|p| RustProgram p, (NodeFallible model, p.node)), "\n"
     let regs = Concat (Each model.programs, \|p| ".program::<{p.name}>(\"{p.prism}\")\n")
-    let checks = Concat (Each model.checks, \|c| ".check(\"{c.name}\", || vec![{Join (Each c.lines, \|l| Expression l), ", "}])\n")
+    let checks = Concat (Each model.checks, \|c| ".check(\"{c.name}\", || vec![{Join (Each c.lines, \|l| Expression l), ", "}])\n{CheckNames c}")
     let scriptList = Concat (Each scripts, \|s| "\"{Escape s}\",\n")
     let runRoot = match model.?root:
         ? r: RunRoot r.name
