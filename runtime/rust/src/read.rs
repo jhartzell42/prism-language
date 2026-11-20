@@ -39,6 +39,14 @@ fn matches(p: &Pod, v: &Pod) -> bool {
         (rest || ps.len() == fs.len())
             && ps.iter().filter(|(n, _)| &**n != REST).all(|(n, p)| fs.iter().any(|(m, v)| m == n && matches(p, v)))
     };
+    // A value whose type prints by its own `impl ^Debug` (`Pod::Shown`: a chess square
+    // prints `e2`) matches the pattern that spells what it prints, as a transcript
+    // would show it; any other pattern is matched against its structure.
+    if let Pod::Shown(text, _) = v {
+        if *crate::print::show(p) == *text.0 {
+            return true;
+        }
+    }
     match (p, v.structure()) {
         (Pod::Choice(c, a), _) if &**c == ANY && a.is_empty() => true,
         (Pod::Path(a), Pod::Path(b)) => crate::print::path(a) == crate::print::path(b),

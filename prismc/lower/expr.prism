@@ -1224,13 +1224,13 @@ fn ExistsMatch lx, env, s, arm, p, t, span:
             let pty = PatternTyOf lx, p
             let fresh = Or (?ParamMatch b, pty, {{}}), {{}}
             let packed = Own (ValueOf lx, env, s)
-            VlOwned (XBlock [[(DoLet (PaBind label), packed)]], (OpenedAt lx, env, label, vs, kinds, fresh, 0, p, arm, pty, t)), t
+            VlOwned (XBlock [[(DoLet (PaBind label), packed)]], (OpenedAt lx, env, label, vs, kinds, fresh, 0, p, arm, pty, b, t)), t
         other: VlOwned (InternalBug "an `any` arm over a value that is no existential"), t
 
-OpenedAt: unbounded fn Lx, Env, Text, [Text], [((Text, Ty))], (Text ==> Ty), Nat, Pattern, Arm, Ty, OutTy -> Ex
-fn OpenedAt lx, env, label, vs, kinds, fresh, i, p, arm, pty, t = match vs[i]:
+OpenedAt: unbounded fn Lx, Env, Text, [Text], [((Text, Ty))], (Text ==> Ty), Nat, Pattern, Arm, Ty, Ty, OutTy -> Ex
+fn OpenedAt lx, env, label, vs, kinds, fresh, i, p, arm, pty, body, t = match vs[i]:
     nil:
-        let value = UnpackedAt lx, fresh, pty, (XVar label)
+        let value = UnpackedAt lx, fresh, pty, body, (XVar label)
         let po = ArmPat lx, (? p), pty, Owned, "{label}_arm"
         let env2 = BindAll env, po.binds
         let guard = match arm.?guard:
@@ -1253,16 +1253,16 @@ fn OpenedAt lx, env, label, vs, kinds, fresh, i, p, arm, pty, t = match vs[i]:
                     # (held as its own value, which a lift's closure clones, `KindedCaptured`: a
                     # reference to the number read would not outlive the arm, tally's
                     # `SupplierFrom`, doc-closure-opening-an-existential-lifts-a-role-generic-call)
-                    XBlock [[(DoLet (PaBind held), number)]], (OpenedAt lxk, env, label, vs, kinds, fresh, i + 1, p, arm, pty, t)
+                    XBlock [[(DoLet (PaBind held), number)]], (OpenedAt lxk, env, label, vs, kinds, fresh, i + 1, p, arm, pty, body, t)
                 ? last:
                     let At = \|k| OpenedAt (update lx:
                         &_.subst <= Insert &_.subst, r, (TyRole k)
-                    ), env, label, vs, kinds, fresh, i + 1, p, arm, pty, t
+                    ), env, label, vs, kinds, fresh, i + 1, p, arm, pty, body, t
                     Fold (Take variants, (Dec (Len variants))), (At last), \|rest, k| XIf (XBin OpEq, number, (VariantNumberOf lx, k)), (At k), rest
         # (a variable the arm's pattern gives no type of its own, `any ((role, id,
         # element))` read with no `Fixed<<..>>` of it: no code reads its variant, held only
         # as types are, which the lowering erases)
-        otherwise: OpenedAt lx, env, label, vs, kinds, fresh, i + 1, p, arm, pty, t
+        otherwise: OpenedAt lx, env, label, vs, kinds, fresh, i + 1, p, arm, pty, body, t
 
 # A packed value read back in an opened arm: unpacked at the type it was packed at, the
 # existential's body with a part of an associated type at its own variable plain data
@@ -1272,27 +1272,25 @@ fn OpenedAt lx, env, label, vs, kinds, fresh, i, p, arm, pty, t = match vs[i]:
 # opened by `!ReplacesAt` at the editor's `(Nat, (), Elem)` (q16 unpacked it at that
 # type and the runtime panicked, "two existentials of different types met",
 # doc-file-document-hosted-on-disk).
-UnpackedAt: unbounded fn Lx, (Text ==> Ty), Ty, Ex -> Ex
-fn UnpackedAt lx, fresh, pty, packed:
-    let lxPacked = update lx:
-        &_.subst <= Fold (Values fresh), &_.subst, \|m, opened| match opened:
-            TyRigid r: Remove m, r
-            otherwise: m
-    # (the packed type is the body's with every associated type at the existential's own
-    # variable plain data, `ErasedSignatureOut`, also where an impl's one equation gives
-    # it one type at every variant, `type SeatId r = unit`: a function generic in the
-    # document packs it as plain data all the same)
-    let whole = XCallAt (RefRuntime "prism_rtl::unpacked"), [[(ErasedSignatureOut lxPacked, pty)]], [[(XRef packed)]]
-    if (ErasedSignatureOut lxPacked, pty) == (OutTyOf lx, pty): whole else: ReadParts lxPacked, lx, pty, whole
+UnpackedAt: unbounded fn Lx, (Text ==> Ty), Ty, Ty, Ex -> Ex
+fn UnpackedAt lx, fresh, pty, body, packed:
+    # (the packed type is the existential's body as its type says it, every associated
+    # type at its own variable plain data, `ErasedSignatureOut`: the type the checker
+    # gives the arm's pattern has already read one that an impl's one equation decides at
+    # every variant, `SeatId File r` as `unit`, and a function generic in the document
+    # packs it as plain data all the same)
+    let whole = XCallAt (RefRuntime "prism_rtl::unpacked"), [[(ErasedSignatureOut lx, body)]], [[(XRef packed)]]
+    if (ErasedSignatureOut lx, body) == (OutTyOf lx, pty): whole else: ReadParts lx, body, pty, whole
 
 # The reverse of `ErasedParts`: a value held with its open associated types plain data,
 # read at the types a lowering that knows them gives, a tuple part by part.
-ReadParts: unbounded fn Lx, Lx, Ty, Ex -> Ex
-fn ReadParts lxHeld, lx, ty, value = match ty:
-    TyTuple parts:
+ReadParts: unbounded fn Lx, Ty, Ty, Ex -> Ex
+fn ReadParts lx, held, ty, value = match ((held, ty)):
+    (((TyTuple heldParts), (TyTuple parts))) if (Len heldParts) == (Len parts):
         let read = Each (Range0 (Len parts)), \|i|
             let part = Or parts[i], TyErr
-            if (ErasedSignatureOut lxHeld, part) != (OutTyOf lx, part): ReadParts lxHeld, lx, part, (XPart (XVar "held_whole"), i) else: XPart (XVar "held_whole"), i
+            let heldPart = Or heldParts[i], TyErr
+            if (ErasedSignatureOut lx, heldPart) != (OutTyOf lx, part): ReadParts lx, heldPart, part, (XPart (XVar "held_whole"), i) else: XPart (XVar "held_whole"), i
         XBlock [[(DoLet (PaBind "held_whole"), value)]], (XTuple read)
     otherwise: XCallAt (HelperRef "recode"), [[(OutTyOf lx, ty)]], [[XRef value]]
 
@@ -1317,7 +1315,7 @@ fn ExistsArms lx, env, s, arms, t, span:
                     ? (Pattern(kind=(PAny p), span=ignore2)):
                         let pty = PatternTyOf lx, p
                         let fresh = Or (?ParamMatch b, pty, {{}}), {{}}
-                        DoExpr (TriedAt lx, env, label, held, "{held}_{i}", vs, kinds, fresh, (FixedIn lx, {{}}, p, pty), 0, p, arm, pty)
+                        DoExpr (TriedAt lx, env, label, held, "{held}_{i}", vs, kinds, fresh, (FixedIn lx, {{}}, p, pty), 0, p, arm, pty, b)
                     nil: DoExpr (XBreak label, (OwnAs t, (BlockValue lx, env, arm.body)))
                     ? other:
                         let po = RustPat lx, other, (TypeAt lx, s.span), ByRef, "{held}_{i}"
@@ -1334,10 +1332,10 @@ fn ExistsArms lx, env, s, arms, t, span:
 # variant the arm is lowered at, as `OpenedAt` does, and the arm leaves the labelled block
 # with its body's value where its pattern takes the value; else nothing, and the next arm
 # is tried.
-TriedAt: unbounded fn Lx, Env, Text, Text, Text, [Text], [((Text, Ty))], (Text ==> Ty), (Text ==> Text), Nat, Pattern, Arm, Ty -> Ex
-fn TriedAt lx, env, label, held, stem, vs, kinds, fresh, fixed, i, p, arm, pty = match vs[i]:
+TriedAt: unbounded fn Lx, Env, Text, Text, Text, [Text], [((Text, Ty))], (Text ==> Ty), (Text ==> Text), Nat, Pattern, Arm, Ty, Ty -> Ex
+fn TriedAt lx, env, label, held, stem, vs, kinds, fresh, fixed, i, p, arm, pty, body = match vs[i]:
     nil:
-        let value = UnpackedAt lx, fresh, pty, (XVar held)
+        let value = UnpackedAt lx, fresh, pty, body, (XVar held)
         let po = ArmPat lx, (? p), pty, Owned, "{stem}_arm"
         let env2 = BindAll env, po.binds
         let guard = match arm.?guard:
@@ -1354,15 +1352,15 @@ fn TriedAt lx, env, label, held, stem, vs, kinds, fresh, fixed, i, p, arm, pty =
                     let kind = "{stem}_kind{i}"
                     let lxk = update lx:
                         &_.kinded <= Insert &_.kinded, r, ((kind, ""))
-                    XBlock [[(DoLet (PaBind kind), number)]], (TriedAt lxk, env, label, held, stem, vs, kinds, fresh, fixed, i + 1, p, arm, pty)
+                    XBlock [[(DoLet (PaBind kind), number)]], (TriedAt lxk, env, label, held, stem, vs, kinds, fresh, fixed, i + 1, p, arm, pty, body)
                 ? last:
                     let At = \|k| TriedAt (update lx:
                         &_.subst <= Insert &_.subst, r, (TyRole k)
-                    ), env, label, held, stem, vs, kinds, fresh, fixed, i + 1, p, arm, pty
+                    ), env, label, held, stem, vs, kinds, fresh, fixed, i + 1, p, arm, pty, body
                     match fixed[r]:
                         ? k: XIf (XBin OpEq, number, (VariantNumberOf lx, k)), (At k), XUnit
                         nil: Fold (Take variants, (Dec (Len variants))), (At last), \|rest, k| XIf (XBin OpEq, number, (VariantNumberOf lx, k)), (At k), rest
-        otherwise: TriedAt lx, env, label, held, stem, vs, kinds, fresh, fixed, i + 1, p, arm, pty
+        otherwise: TriedAt lx, env, label, held, stem, vs, kinds, fresh, fixed, i + 1, p, arm, pty, body
 
 # The kinded variables a pattern fixes, each with the variant its `Fixed<<Variant>>` names
 # where the value's type is `Fixed` of the variable (ruling VO), through tuples and groups.

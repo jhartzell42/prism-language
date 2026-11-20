@@ -1015,7 +1015,7 @@ pub fn utf8_text_try(bytes: &Array<u8>) -> Result<Text, Error> {
 
 /// `Print` (Type System ch. 2, the POD printed form): one top-level node per line.
 pub fn print_nodes<T: ToPod>(nodes: &Array<T>) -> Text {
-    let lines: Vec<String> = nodes.iter().map(|node| ::prism_rtl::print::show(&node.to_pod())).collect();
+    let lines: Vec<String> = nodes.iter().map(|node| ::prism_rtl::print::show(&node.to_pod().structural())).collect();
     Text::from(lines.join("\n"))
 }
 

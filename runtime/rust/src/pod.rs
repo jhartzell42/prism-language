@@ -109,6 +109,26 @@ impl Pod {
     pub fn structure(&self) -> &Pod {
         if let Pod::Shown(_, p) = self { p.structure() } else { self }
     }
+    /// The value with every `Shown` in it replaced by what it stands for: the structure
+    /// `^Pod`'s text form writes (`Print`, a `^Pod` type's `Encode`), which reads back as
+    /// the value whatever its types' own `impl ^Debug` print.
+    pub fn structural(&self) -> Pod {
+        let fields = |fs: &Vec<(Rc<str>, Pod)>| fs.iter().map(|(n, v)| (n.clone(), v.structural())).collect();
+        let items = |xs: &Vec<Pod>| xs.iter().map(Pod::structural).collect();
+        match self {
+            Pod::Shown(_, p) => p.structural(),
+            Pod::Record(n, fs) => Pod::Record(n.clone(), fields(fs)),
+            Pod::Element(n, fs) => Pod::Element(n.clone(), fields(fs)),
+            Pod::Choice(c, xs) => Pod::Choice(c.clone(), items(xs)),
+            Pod::Tuple(xs) => Pod::Tuple(items(xs)),
+            Pod::Array(xs) => Pod::Array(items(xs)),
+            Pod::Map(es) => Pod::Map(es.iter().map(|(k, v)| (k.structural(), v.structural())).collect()),
+            Pod::Some(p) => Pod::Some(Box::new(p.structural())),
+            Pod::Ok(p) => Pod::Ok(Box::new(p.structural())),
+            Pod::Failed(p) => Pod::Failed(Box::new(p.structural())),
+            other => other.clone(),
+        }
+    }
     /// A record's or element's field.
     pub fn field(&self, name: &str) -> Option<&Pod> {
         let (Pod::Record(_, fs) | Pod::Element(_, fs)) = self.structure() else { return None };

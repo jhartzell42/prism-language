@@ -140,8 +140,10 @@ fn ClausesBody lx, env, clauses, names, ptys, Body, label, t, ?result:
         # it at every role: recoded, as a clause's below is)
         match ?result:
             ? r:
-                let atBody = OutTyOf lx, (SubstTy lx, (Peel r))
-                if (LayerOf r) == LyPlain and (HoldsPod t) and atBody != t: XCallAt (HelperRef "recode"), [[t]], [[(XRef (XBlock [[(DoLet (PaTyped (PaBind "at_body"), atBody), value)]], (XVar "at_body")))]] else: value
+                # (the body's own type, as the checker read its value: `game` is a
+                # `Game`, where the result's type still says `Answer d r`)
+                let atBody = ClauseBodyOut lx, c.body
+                if (LayerOf r) == LyPlain and (HoldsPod t) and atBody != t and Podable atBody: XCallAt (HelperRef "recode"), [[t]], [[(XRef (XBlock [[(DoLet (PaTyped (PaBind "at_body"), atBody), value)]], (XVar "at_body")))]] else: value
             nil: value
     else:
         let scrut = match scrutIx:
@@ -193,9 +195,15 @@ fn ClausesBody lx, env, clauses, names, ptys, Body, label, t, ?result:
             let heldPlain = match ?result:
                 ? r: (LayerOf r) == LyPlain and HoldsPod t
                 nil: False
-            let answered = if (lxc.subst != lx.subst or heldPlain) and atVariant != t: XCallAt (HelperRef "recode"), [[t]], [[(XRef (XBlock [[(DoLet (PaTyped (PaBind "at_variant"), atVariant), value)]], (XVar "at_variant")))]] else: value
+            let atBody = ClauseBodyOut lxc, c.body
+            let answered = if lxc.subst != lx.subst and atVariant != t: XCallAt (HelperRef "recode"), [[t]], [[(XRef (XBlock [[(DoLet (PaTyped (PaBind "at_variant"), atVariant), value)]], (XVar "at_variant")))]] else: if heldPlain and atBody != t and Podable atBody: XCallAt (HelperRef "recode"), [[t]], [[(XRef (XBlock [[(DoLet (PaTyped (PaBind "at_body"), atBody), value)]], (XVar "at_body")))]] else: value
             XArm(pat=pa, conds=conds, body=answered)
         Own (ArmsValue scrut, arms, "'{label}", t)
+
+# The type of a clause's body's value, as the checker read it.
+ClauseBodyOut: unbounded fn Lx, FnBody -> OutTy
+fn ClauseBodyOut lx, (BodyExpr x) = OutTyOf lx, (Peel (TypeAt lx, x.span))
+fn ClauseBodyOut lx, (BodyBlock b) = BlockTy lx, b
 
 # A clause's lowering with each kinded variable its `Fixed<<Variant>>` parameter pattern
 # fixes given that variant (ruling PK, ruling VO), as an instantiation gives it.

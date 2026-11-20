@@ -11,7 +11,7 @@ use std::rc::Rc;
 use crate::cells::Dynamic;
 use crate::collections::{Array, Map};
 use crate::existential::Packed;
-use crate::pod::{FromPod, Path, Segment};
+use crate::pod::{FromPod, Path, Pod, Segment};
 
 /// `SeatPathOf`: a seat's own prefix of a place's path, the role's position and the
 /// seat's key (`0/[White]/#g/2` is White's `0/[White]`).
@@ -66,7 +66,10 @@ where
             if !is_seat(&element.sample_detached()) {
                 continue;
             }
-            let (role, kind, id) = (role.clone(), kind.clone(), seat_id_at::<S>(path));
+            // (the id as plain data, whatever `S` is: a guest is packed as the existential's
+            // body holds it, its seat id an associated type at the hidden role, and every
+            // opened arm unpacks it so, prismc's `UnpackedAt`)
+            let (role, kind, id) = (role.clone(), kind.clone(), seat_id_at::<Pod>(path));
             guests.insert(path.clone(), element.map(move |e| Packed::of((role.clone(), id.clone(), e.clone())).with_kind(kind.clone()).packed()));
         }
         guests
