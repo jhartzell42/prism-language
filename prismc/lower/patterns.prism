@@ -303,12 +303,12 @@ fn TagPat lx, tg, fps, rest, ty, mode, fresh:
             LyEv if live: ((nil, (EventFieldPat lx, fp.pattern, fname, (FieldSpell tg.home, fname, ft), ft, "{fresh}_v", (RefIn lx, tg.home, (DescStructOf tg)))))
             # a document's entry (`Elem r`): the event its level holds (`LevelEvents`)
             LyEv if (Len (LevelEvents tg)) > 0:
-                let o = RustPat lx, fp.pattern, ft, subMode, "{fresh}_{i}"
+                let o = HeldFieldPat lx, fp.pattern, ft, ft, subMode, "{fresh}_{i}"
                 ((? (FieldSpell tg.home, fname, ft), o))
             LyEv: ((nil, (PatOut(pa=PaWild, conds=[[CcIf (InternalBug "an event field in a pattern of a row value that is no element ({tg.name}.{fname})")]], binds=[[]]))))
             LyDyn if live: ((nil, (LiveFieldPat lx, fp.pattern, fname, (FieldSpell tg.home, fname, ft), ft, "{fresh}_v", (RefIn lx, tg.home, (DescStructOf tg)))))
             otherwise:
-                let o = RustPat lx, fp.pattern, (Peel ft), subMode, "{fresh}_{i}"
+                let o = HeldFieldPat lx, fp.pattern, ft, (Peel ft), subMode, "{fresh}_{i}"
                 ((? (FieldSpell tg.home, fname, ft), o))
     let fieldPas = Fold parts, [[]], \|acc, ((?f, o))| match ?f:
         ? f: Push acc, ((f, o.pa))
@@ -325,6 +325,35 @@ fn TagPat lx, tg, fps, rest, ty, mode, fresh:
     let viewed = [[(CcLet (PaCtor (RefRuntime "std::Some"), [[PaBind view]]), (DescView lx, tg, fresh)), (CcLet (PaRecord descPath, fieldPas, True), (XRef (XVar view)))]]
     if live: PatOut(pa=(PaBind fresh), conds=(Append viewed, conds), binds=tagged)
     else: PatOut(pa=level, conds=conds, binds=binds)
+
+# A field's pattern against a description or a document's entry, whose struct holds the
+# field as the tag declares it: a field of an associated type at the tag's variables is
+# plain data there (`TagFieldOut`), read back at the type the pattern has here where that
+# is another, as a live element's field is (`EventFieldPat`) and a constructor's
+# (`AssocPodPat`): an event field's binder the event mapped, a value recoded and then
+# matched. `Seat.Request(!requests=!requests)` of an editor's entry binds an event of the
+# editor's requests (doc-element-event-field-of-a-role-indexed-type-read-where-the-role-
+# is-fixed; q14 bound the entry's own event of plain data and mapped it at the request).
+HeldFieldPat: unbounded fn Lx, Pattern, Ty, Ty, Holding, Text -> PatOut
+fn HeldFieldPat lx, p, ft, declared, mode, fresh:
+    let concrete = OutTyOf lx, (Peel (PatternTyOf lx, p))
+    let erased = TagFieldOut lx, ft
+    let reads = (TagFieldOpen lx, ft) and concrete != erased and not (IsIgnoreParameter p)
+    if not reads: RustPat lx, p, declared, mode, fresh
+    else: match ((LayerOf ft, ?PatternBinder p)):
+        ((LyEv, (? n))):
+            let held = "{fresh}_held"
+            let back = XMethod (XVar held), "map", [[(XClosure True, [[(PaTyped (PaBind "open"), (OutRef erased))]], (XCallAt (HelperRef "recode"), [[concrete]], [[XVar "open"]]))]]
+            PatOut(pa=(PaBind held), conds=[[]], binds=[[((SNameKey n, (BnLocal back, Owned, (OutEvent concrete))))]])
+        ((LyEv, nil)): PatOut(pa=PaWild, conds=[[CcIf (InternalBug "a pattern inside an element's event field")]], binds=[[]])
+        otherwise: AssocPodPat lx, p, (Peel (PatternTyOf lx, p)), mode, fresh
+
+# The name a pattern that is one binder binds, through groups.
+?PatternBinder: fn Pattern -> ?SName
+fn ?PatternBinder p = match p.kind:
+    PName n: ? n
+    PGroup q: ?PatternBinder q
+    otherwise: nil
 
 # An element seen as its tag's description (`prism_rtl::element_view`): a description
 # when it is one of the tag's, a live element of the tag as the description of its level,

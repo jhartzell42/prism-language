@@ -2713,6 +2713,7 @@ fn DeclaredCall lx, env, qk, args, span, cspan, t:
                 if v.sort == "method": MethodCall lx, env, v, args, span, cspan, t
                 else: if v.home == "Prelude": PreludeCall lx, env, qk, args, span, t
                 else: if IsLibraryBuiltin lx, qk: VlOwned (LibraryBuiltinCall lx, qk, (ArgsFor lx, env, v, args), args, span, t), t
+                else: if CalledWhereUnsayable lx, v, cspan: InlinedCall lx, env, v, qk, args, cspan, t
                 else:
                     let callArgs = Append (KindArgsWith lx, v, cspan, args), (ArgsFor lx, env, v, args)
                     let call = if OpensByVariable lx, qk: XCall (InstanceRef lx, qk, (CallInstance lx, v, cspan)), callArgs
@@ -2741,6 +2742,52 @@ fn DeclaredCall lx, env, qk, args, span, cspan, t:
                         ? signatureTy: VlOwned (Recolored lx, call, signatureTy, (CallResultTy lx, span), 0), t
                         nil: VlOwned call, t
             nil: VlOwned (InternalBug "a call of {qk}"), t
+
+# Whether a call gives a bounded type parameter of the callee a type Rust cannot be told:
+# an associated type at an index only a value holds here (`?DecodedAs<<Reason d r>> bytes`
+# in a function generic in `d` and `r`), plain data in every Rust signature.
+CalledWhereUnsayable: unbounded fn Lx, ValInfo, Range -> Bool
+fn CalledWhereUnsayable lx, v, cspan:
+    let instance = CallInstance lx, v, cspan
+    Fold v.scheme.bounds, False, \|f, ((q, ignore))| f or Fold instance, False, \|f2, ((g, ty))| f2 or (g == q and HasOpenIndexedAssoc ty)
+
+# Such a call, inlined: the callee's clauses lowered where the call stands, at the types
+# the call gives its type parameters, its parameters bound to the arguments. Rust has no
+# type to call the callee's function at, and the bound the callee asks is answered here by
+# the caller's own (`Reason d _: ^SerializableValue` for every role, through its trait's
+# dispatch method, `?DispatchAt`), which the inlined body reaches as the caller's body
+# does (doc-generic-function-called-at-a-role-indexed-type-of-an-unknown-role; q14 wrote
+# `decoded_as_o::<Pod>(bytes)`, rustc E0277). A callee that calls itself is refused.
+InlinedCall: unbounded fn Lx, Env, ValInfo, Text, [Arg], Range, OutTy -> Vl
+fn InlinedCall lx, env, v, qk, args, cspan, t:
+    let instance = CallInstance lx, v, cspan
+    let kinds = KindsOfVal lx, v
+    let named = Fold instance, [[]], \|acc, ((ignore, ty))| UnionTexts acc, (RigidsIn ty)
+    let clashes = Fold kinds, False, \|f, ((r, ignore))| f or HasText named, r
+    if CallsItself lx, qk: VlOwned (Refusal "`{BareName qk}`, a function that calls itself, called at an associated type whose index only a value holds here: its lowering is not written yet"), t
+    else: if clashes: VlOwned (Refusal "`{BareName qk}` called at an associated type whose index only a value holds here, where one of its own kinded type variables has the name of a type variable of the caller: its lowering is not written yet"), t
+    else:
+        let clauses = ClausesOf lx.g, qk
+        let lxc = update (InModuleAt lx, v.file, v.home, v.home):
+            &_.subst <= Fold instance, {{}}, \|m, ((q, ty))| Insert m, q, ty
+            &_.csubst <= {{}}
+            &_.whole <= IsWholeFn lx, qk
+            &_.kinded <= Fold kinds, &_.kinded, \|m, ((r, kindChoice))| Insert m, r, (((KindParamName r), kindChoice))
+        let ((ptys, res)) = SignatureTys v.scheme
+        let ((pts, ret)) = SignatureOut lxc, qk, v.scheme
+        let names = ParamNames lxc, clauses, pts
+        let label = "inlined{SpanStem cspan}"
+        let body = ClausesBody lxc, emptyEnv, clauses, names, ptys, FnBodyValue, label, ret, (? res)
+        let kindValues = KindArgsWith lx, v, cspan, args
+        let kindLets = Each (Range0 (Len kinds)), \|i|
+            let ((r, ignore)) = Or kinds[i], (("", ""))
+            DoLet (PaBind (KindParamName r)), (Or kindValues[i], XUnit)
+        let values = ArgsFor lx, env, v, args
+        let argLets = Each (Range0 (Len names)), \|i|
+            let ((rs, ignore)) = Or names[i], (("", True))
+            DoLet (PaBind rs), (Or values[i], XUnit)
+        let whole = XBlock (Append kindLets, argLets), body
+        if ret != t: VlOwned (XCallAt (HelperRef "recode"), [[t]], [[XRef whole]]), t else: VlOwned whole, t
 
 # The result a callee's signature gives a call, where it has to be made again
 # (`Recolored`) to be the call's value: a function of the callee's own color in what it

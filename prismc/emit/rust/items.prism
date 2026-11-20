@@ -52,14 +52,22 @@ fn Bounded ps, tr = "<{Join (Each ps, \|p| "{p}: {tr}"), ", "}>"
 BoundedT: fn TyDef, Text -> Text
 fn BoundedT t, tr = match t.params:
     [[]]: ""
-    ps: "<{Join (Each ps, \|p| "{p}: {tr}{ProjectionBounds t, p}"), ", "}>"
+    ps: "<{Join (Each ps, \|p| "{p}: {ImplBound t, p, tr}{ProjectionBounds t, p}"), ", "}>"
+
+# The bound an impl of a trait puts on one of the type's parameters: the trait; for a
+# parameter no field holds (`TyDef.phantoms`), only what the type itself asks of it, since
+# no value of it is there for the impl to read (`Response<D>` is plain data whatever `D`
+# is; q14 asked `D: ToPod` of a generic function's document,
+# doc-supplier-of-a-generic-function-answers-a-response-over-its-document).
+ImplBound: fn TyDef, Text, Text -> Text
+fn ImplBound t, p, tr = if Fold t.phantoms, False, \|found, q| found or q == p: "::std::clone::Clone + 'static" else: tr
 
 # A type's parameters bounded for an impl that reads its maps: each by the trait, and one
 # a map's key holds (`TyDef.keyed`) by `Ord` too, as the runtime's impls for `Map` want.
 BoundedKeyed: fn TyDef, Text -> Text
 fn BoundedKeyed t, tr = match t.params:
     [[]]: ""
-    ps: "<{Join (Each ps, \|p| if (Fold t.keyed, False, \|found, q| found or q == p): "{p}: {tr} + ::std::cmp::Ord{ProjectionBounds t, p}" else: "{p}: {tr}{ProjectionBounds t, p}"), ", "}>"
+    ps: "<{Join (Each ps, \|p| if (Fold t.keyed, False, \|found, q| found or q == p): "{p}: {tr} + ::std::cmp::Ord{ProjectionBounds t, p}" else: "{p}: {ImplBound t, p, tr}{ProjectionBounds t, p}"), ", "}>"
 
 # The bounds a type's parameter needs because a field names an associated type at it
 # (`last: Reading g` is `<G as Gauge_t>::Reading`, which Rust takes only under `G:
