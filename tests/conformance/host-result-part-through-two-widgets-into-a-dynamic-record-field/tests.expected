@@ -12,5 +12,7 @@ tick 1
     0: click
   added:
     1/0/0/0.[0.["cy"].0.#0.0/0]/0: Ui.Label(text="teller cy")
+
+tick 2
   changed:
     2: Ui.Label(text="2 seated")

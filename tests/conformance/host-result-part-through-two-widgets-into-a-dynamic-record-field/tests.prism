@@ -5,3 +5,4 @@ use App.*
 test a_teller_joins, @page:
     build
     click at 0
+    tick
