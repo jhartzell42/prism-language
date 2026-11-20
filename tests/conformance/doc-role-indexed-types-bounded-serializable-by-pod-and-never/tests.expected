@@ -1,0 +1,7 @@
+# Derived by hand from the documents book ch. 4 and ruling QH: the teller's `Add 3` is written by `^Pod`'s text form and read back, and a watcher has no ask to write.
+test asked_at_each_side
+
+tick 0
+  added:
+    0: Ui.Label(text="a teller asks to add 3")
+    1: Ui.Label(text="a watcher asks in 0 bytes")

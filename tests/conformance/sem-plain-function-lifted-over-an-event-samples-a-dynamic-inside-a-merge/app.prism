@@ -1,0 +1,24 @@
+# A plain function lifted over an event, sampling a dynamic it is also given, written as
+# one of the events of a list a function that takes events whole merges (`!MergeWith
+# Append, [[(Replied !response), !news, (Answered $?told, !typed)]]`, examples/chess's
+# command line). The dynamic is read at each firing; the merge takes the event. Isolated
+# from examples/chess, whose crate q16 gave the lifted function the dynamic itself (rustc
+# E0308: expected `&Option<PlayerTold>`, found `&Dynamic<Option<PlayerTold>>`).
+# Written by Claude (round after q13), 20 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+Answered: fn ?Text, Ui.Click -> Text
+fn Answered (? told), click = "told {told}"
+fn Answered nil, click = "untold"
+
+Later: fn Text, Text -> Text
+fn Later first, second = second
+
+@page: @unit
+@page:
+    !ask <- Ui.Button($label=$"ask")                                       # 0
+    !tell <- Ui.Button($label=$"tell")                                     # 1
+    $?told <- nil then ? "ada" on !tell
+    $last <- "nothing" then !MergeWith Later, [[(Answered $?told, !ask), ("telling" on !tell)]]
+    Ui.Label($text=$"{$last}")                                             # 2

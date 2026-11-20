@@ -1,0 +1,9 @@
+# The tests of sem-plain-function-lifted-over-an-event-samples-a-dynamic-inside-a-merge.
+emit Ui.*
+use App.*
+
+test asked_told_asked, @page:
+    build
+    click at 0
+    click at 1
+    click at 0

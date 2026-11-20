@@ -1,0 +1,13 @@
+# Derived by hand under ruling PL (the board is the page's 0, its button its 0, its `for` its 1, a name's row holding the `rebuild` at its 0, generation #0, the seat applied there with its label 0) from Semantics ch. 8 (a blueprint is a value and builds where a block applies it).
+test one_more_seat
+
+tick 0
+  added:
+    0/0: Ui.Button(label="more")
+    0/1.["ada"].0.#0.0/0: Ui.Label(text="seat ada")
+
+tick 1
+  in:
+    0/0: click
+  added:
+    0/1.["bob"].0.#0.0/0: Ui.Label(text="seat bob")

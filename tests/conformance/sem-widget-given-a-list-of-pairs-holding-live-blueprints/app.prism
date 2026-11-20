@@ -1,0 +1,29 @@
+# A widget given a list of pairs each holding a live blueprint (`[((Color, $@(@unit emit
+# ..)))]`, examples/chess's `@Server port, local`), which it hands to a function lifted
+# over a dynamic of its own (`PlayersFrom local, $connections`) that makes the map a `for`
+# builds. The parameter is plain: a list whose parts are live. Isolated from
+# examples/chess, whose crate q16 held the parameter as a list of pairs of bare blueprints
+# and gave it to a function that takes pairs of dynamics (rustc E0308: expected
+# `Array<(Color, Dynamic<Rc<..>>)>`, found `Array<(Color, Rc<..>)>`).
+# Written by Claude (round after q13), 20 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+Seated: fn [((Text, $@(@unit emit Ui.*)))], Nat -> (Text ==> $@(@unit emit Ui.*))
+fn Seated local, shown = Map (Take local, shown)
+
+@Board: fn [((Text, $@(@unit emit Ui.*)))] -> @unit emit Ui.*
+fn @Board local:
+    !more <- Ui.Button($label=$"more")                                     # 0
+    $shown <- 1 then $shown + 1 on !more
+    for name, $@seat <- (Seated local, $shown):                            # 1, at each name
+        rebuild $@seat:
+            _
+
+@Named: fn Text -> @unit emit Ui.*
+fn @Named name:
+    Ui.Label($text=$"seat {name}")                                         # 0
+
+@page: @unit
+@page:
+    @Board [[(("ada", $ (@Named "ada"))), (("bob", $ (@Named "bob")))]]    # 0

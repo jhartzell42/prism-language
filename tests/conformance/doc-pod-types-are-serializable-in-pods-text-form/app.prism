@@ -1,0 +1,41 @@
+# A type that derives `^Pod` is a `^SerializableValue` in `^Pod`'s text form, and so are
+# the primitives (documents book ch. 4, "A `^Pod` state gets it for free"; rulings QD and
+# QH): `Encode` writes what `Print` prints of the one value, `~Decode` reads it back and
+# refuses bytes that are no value of the type. Isolated from examples/chess, whose crate
+# q16 wrote with no impl of the kind (rustc E0277: the trait bound `ChessGame:
+# SerializableValue_t` is not satisfied) and no `Print` (rustc E0423: expected function,
+# found module `crate::prelude::print`).
+# Written by Claude (round after q13), 20 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Documents.*
+
+type Tally = record:
+    total: Nat
+    name: Text
+derive ^Eq, ^Debug, ^Pod
+
+type Mark = choice:
+    Blank
+    Marked Nat
+derive ^Eq, ^Debug, ^Pod
+
+YesNo: fn Bool -> Text
+fn YesNo True = "yes"
+fn YesNo False = "no"
+
+ReadsBack: forall t. fn t -> Text where t: ^SerializableValue, t: ^Eq
+fn ReadsBack value = match ~Decode<<t>> (Encode value):
+    ~ back: YesNo (back == value)
+    otherwise: "refused"
+
+Refused: fn ~Tally -> Text
+fn Refused (~ tally) = "read as a tally of {tally.total}"
+fn Refused ~failed = "refused"
+
+@page: @unit
+@page:
+    Ui.Label($text=$"written as printed: {YesNo ((Encode (Marked 3)) == (Utf8Bytes (Print [[(Marked 3)]])))}")          # 0
+    Ui.Label($text=$"read back: {ReadsBack Tally(total=7, name="ada")} {ReadsBack (Marked 3)} {ReadsBack Blank}")       # 1
+    Ui.Label($text=$"primitives: {ReadsBack<<Nat>> 7} {ReadsBack "seven"} {ReadsBack True}")                                   # 2
+    Ui.Label($text=$"a mark's bytes as a tally: {Refused (~Decode<<Tally>> (Encode (Marked 3)))}")                      # 3

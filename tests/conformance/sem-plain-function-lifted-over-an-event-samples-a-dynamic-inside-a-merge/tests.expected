@@ -1,0 +1,26 @@
+# Derived by hand from Type System ch. 4 (a plain function applied to an event and a dynamic is lifted over the event and reads the dynamic at each firing) and Semantics ch. 3 (a hold read in the tick of its write has its value from before).
+test asked_told_asked
+
+tick 0
+  added:
+    0: Ui.Button(label="ask")
+    1: Ui.Button(label="tell")
+    2: Ui.Label(text="nothing")
+
+tick 1
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="untold")
+
+tick 2
+  in:
+    1: click
+  changed:
+    2: Ui.Label(text="telling")
+
+tick 3
+  in:
+    0: click
+  changed:
+    2: Ui.Label(text="told ada")

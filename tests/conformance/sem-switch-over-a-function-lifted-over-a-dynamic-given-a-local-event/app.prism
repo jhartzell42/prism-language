@@ -1,0 +1,22 @@
+# `@Switch` over a function that gives an event, lifted over a dynamic and given an event
+# the block names with `let` beside it (`@Switch (!SentAt<<d>> at, $guest, !changed)` in
+# the library's `@Outgoing`): each value of the dynamic makes the event anew, from the
+# same local event. Isolated from examples/chess, whose crate q16 read the local event's
+# port through `self` inside the closure the dynamic is mapped with (rustc E0521:
+# borrowed data escapes outside of method, `switched_outer_made`).
+# Written by Claude (round after q13), 20 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+!Told: fn Nat, !unit -> !Text
+fn !Told n, !changed = "now {n}" on !changed
+
+@page: @unit
+@page:
+    !click <- Ui.Button($label=$"count")                                   # 0
+    !tell <- Ui.Button($label=$"tell")                                     # 1
+    $count <- 0 then $count + 1 on !click
+    let !changed = unit on !tell
+    !said <- @Switch (!Told $count, !changed)                              # 2
+    $last <- "nothing" then !said
+    Ui.Label($text=$"said {$last}")                                        # 3

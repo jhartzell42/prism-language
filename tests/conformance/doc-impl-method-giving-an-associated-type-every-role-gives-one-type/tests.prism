@@ -1,0 +1,6 @@
+# The tests of doc-impl-method-giving-an-associated-type-every-role-gives-one-type.
+emit Ui.*
+use App.*
+
+test read_at_each_role, @page:
+    build

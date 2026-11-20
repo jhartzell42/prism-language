@@ -1,0 +1,7 @@
+# Derived by hand from Part III ch. 6 (an associated type's equation over a variable gives its type at every role) and Semantics ch. 4.
+test read_at_each_role
+
+tick 0
+  added:
+    0: Ui.Label(text="the player reads 3 moves")
+    1: Ui.Label(text="a spectator is told 4 moves")

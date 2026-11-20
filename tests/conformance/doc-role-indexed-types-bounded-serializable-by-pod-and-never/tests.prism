@@ -1,0 +1,6 @@
+# The tests of doc-role-indexed-types-bounded-serializable-by-pod-and-never.
+emit Ui.*
+use App.*
+
+test asked_at_each_side, @page:
+    build

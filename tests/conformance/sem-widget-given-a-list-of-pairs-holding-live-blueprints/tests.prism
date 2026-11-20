@@ -1,0 +1,7 @@
+# The tests of sem-widget-given-a-list-of-pairs-holding-live-blueprints.
+emit Ui.*
+use App.*
+
+test one_more_seat, @page:
+    build
+    click at 0/0

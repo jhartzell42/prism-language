@@ -1,0 +1,8 @@
+# The tests of sem-switch-over-a-function-lifted-over-a-dynamic-given-a-local-event.
+emit Ui.*
+use App.*
+
+test counted_then_told, @page:
+    build
+    click at 0
+    click at 1

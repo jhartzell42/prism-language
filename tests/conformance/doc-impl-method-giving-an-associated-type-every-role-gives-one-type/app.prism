@@ -1,0 +1,37 @@
+# An impl's method whose result is a role-indexed associated type that the impl's one
+# equation gives the same type at every role (`type Answer r = Game`, `fn Read game, role
+# = game`: the library's `^PerfectInformationGame` derive, `fn Read game, role, id, query =
+# game`). The trait's Rust method gives plain data for `Answer d r`, whatever the role;
+# the impl's body gives the game. Isolated from tests/documents/c8-chess-via, whose crate
+# q16 wrote `fn read_f(..) -> crate::prelude::Pod { game_p0.clone() }` for (rustc E0308:
+# expected `Pod`, found `ChessGame`).
+# Written by Claude (round after q13), 20 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Document d:
+    type Role
+    type Answer (r: Role d)
+    Read: forall (r: Role d). fn d, Fixed r -> Answer d r
+
+type GameRole = choice:
+    Player
+    Spectator
+derive ^Eq, ^Ord, ^Debug
+
+type Game = record:
+    moves: Nat
+derive ^Eq, ^Debug
+
+impl ^Document Game:
+    type Role = GameRole
+    type Answer r = Game
+    fn Read game, role = game
+
+Told: forall d (r: Role d). fn d, Fixed r -> Answer d r where d: ^Document
+fn Told document, role = Read document, role
+
+@page: @unit
+@page:
+    Ui.Label($text=$"the player reads {(Read Game(moves=3), Fixed<<Player>>).moves} moves")                         # 0
+    Ui.Label($text=$"a spectator is told {(Told<<Game, Spectator>> Game(moves=4), Fixed<<Spectator>>).moves} moves")   # 1

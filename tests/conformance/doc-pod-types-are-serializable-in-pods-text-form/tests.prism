@@ -1,0 +1,6 @@
+# The tests of doc-pod-types-are-serializable-in-pods-text-form.
+emit Ui.*
+use App.*
+
+test written_and_read, @page:
+    build

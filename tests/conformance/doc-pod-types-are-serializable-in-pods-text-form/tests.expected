@@ -1,0 +1,9 @@
+# Derived by hand from the documents book ch. 4 ("A `^Pod` state gets it for free") and rulings QD and QH: every value reads back equal, and a mark's bytes are no tally.
+test written_and_read
+
+tick 0
+  added:
+    0: Ui.Label(text="written as printed: yes")
+    1: Ui.Label(text="read back: yes yes yes")
+    2: Ui.Label(text="primitives: yes yes yes")
+    3: Ui.Label(text="a mark's bytes as a tally: refused")

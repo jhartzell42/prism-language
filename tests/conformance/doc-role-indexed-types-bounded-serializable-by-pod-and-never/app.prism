@@ -1,0 +1,51 @@
+# A trait that bounds a role-indexed associated type by `^SerializableValue` at every
+# role, implemented with a type that is one by deriving `^Pod` at one role and `Never` at
+# the other (ruling QH: `Never` has no value to write; examples/chess's `type Request
+# Spectator = Never` under `^RemoteDocument`). Isolated from examples/chess, whose crate
+# q16 asked the method of each in the impl's dispatch (rustc E0277: the trait bound
+# `Never: SerializableValue_t` is not satisfied, and `PlayerRequest: SerializableValue_t`).
+# Written by Claude (round after q13), 20 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+use Documents.*
+
+trait ^Protocol p:
+    type Side
+    type Ask (s: Side p)
+
+trait ^WireProtocol p where p: ^Protocol, Ask p _: ^SerializableValue:
+    Named: fn p -> Text
+
+AskBytes: forall p (s: Side p). fn Fixed s, ?(Ask p s) -> [U8] where p: ^WireProtocol
+fn AskBytes side, (? last) = Encode last
+fn AskBytes side, nil = [[]]
+
+type TallySide = choice:
+    Teller
+    Watcher
+derive ^Eq, ^Ord, ^Debug
+
+type Add = choice:
+    Add Nat
+derive ^Eq, ^Debug, ^Pod
+
+type Tally = choice:
+    Tally
+
+impl ^Protocol Tally:
+    type Side = TallySide
+    type Ask Teller = Add
+    type Ask Watcher = Never
+
+impl ^WireProtocol Tally:
+    fn Named tally = "tally"
+
+Added: fn [U8] -> Text
+fn Added bytes = match ~Decode<<Add>> bytes:
+    ~ (Add n): "to add {n}"
+    otherwise: "nothing readable"
+
+@page: @unit
+@page:
+    Ui.Label($text=$"a teller asks {Added (AskBytes<<Tally, Teller>> Fixed<<Teller>>, (? (Add 3)))}")              # 0
+    Ui.Label($text=$"a watcher asks in {Len (AskBytes<<Tally, Watcher>> Fixed<<Watcher>>, nil)} bytes")             # 1
