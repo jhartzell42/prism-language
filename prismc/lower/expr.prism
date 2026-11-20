@@ -1201,7 +1201,7 @@ fn ExistsMatch lx, env, s, arm, p, t, span:
 OpenedAt: unbounded fn Lx, Env, Text, [Text], [((Text, Ty))], (Text ==> Ty), Nat, Pattern, Arm, Ty, OutTy -> Ex
 fn OpenedAt lx, env, label, vs, kinds, fresh, i, p, arm, pty, t = match vs[i]:
     nil:
-        let value = XCallAt (RefRuntime "prism_rtl::unpacked"), [[(OutTyOf lx, pty)]], [[(XRef (XVar label))]]
+        let value = UnpackedAt lx, fresh, pty, (XVar label)
         let po = ArmPat lx, (? p), pty, Owned, "{label}_arm"
         let env2 = BindAll env, po.binds
         let guard = match arm.?guard:
@@ -1234,6 +1234,34 @@ fn OpenedAt lx, env, label, vs, kinds, fresh, i, p, arm, pty, t = match vs[i]:
         # element))` read with no `Fixed<<..>>` of it: no code reads its variant, held only
         # as types are, which the lowering erases)
         otherwise: OpenedAt lx, env, label, vs, kinds, fresh, i + 1, p, arm, pty, t
+
+# A packed value read back in an opened arm: unpacked at the type it was packed at, the
+# existential's body with a part of an associated type at its own variable plain data
+# (`AnyValue`), whatever variant the arm is lowered at; then such a part read at the type
+# that variant gives, part by part of a tuple (`ReadParts`). A guest packed by a function
+# generic in the document, `((Fixed r, SeatId d r, Elem ..))` as `(Nat, Pod, Elem)`, is
+# opened by `!ReplacesAt` at the editor's `(Nat, (), Elem)` (q16 unpacked it at that
+# type and the runtime panicked, "two existentials of different types met",
+# doc-file-document-hosted-on-disk).
+UnpackedAt: unbounded fn Lx, (Text ==> Ty), Ty, Ex -> Ex
+fn UnpackedAt lx, fresh, pty, packed:
+    let lxPacked = update lx:
+        &_.subst <= Fold (Values fresh), &_.subst, \|m, opened| match opened:
+            TyRigid r: Remove m, r
+            otherwise: m
+    let whole = XCallAt (RefRuntime "prism_rtl::unpacked"), [[(OutTyOf lxPacked, pty)]], [[(XRef packed)]]
+    if (OutTyOf lxPacked, pty) == (OutTyOf lx, pty): whole else: ReadParts lxPacked, lx, pty, whole
+
+# The reverse of `ErasedParts`: a value held with its open associated types plain data,
+# read at the types a lowering that knows them gives, a tuple part by part.
+ReadParts: unbounded fn Lx, Lx, Ty, Ex -> Ex
+fn ReadParts lxHeld, lx, ty, value = match ty:
+    TyTuple parts:
+        let read = Each (Range0 (Len parts)), \|i|
+            let part = Or parts[i], TyErr
+            if (OutTyOf lxHeld, part) != (OutTyOf lx, part): ReadParts lxHeld, lx, part, (XPart (XVar "held_whole"), i) else: XPart (XVar "held_whole"), i
+        XBlock [[(DoLet (PaBind "held_whole"), value)]], (XTuple read)
+    otherwise: XCallAt (HelperRef "recode"), [[(OutTyOf lx, ty)]], [[XRef value]]
 
 # `match s:` of several arms over an existential of kinded variables, some `any p` (Part
 # III ch. 6: its arms by the role's `Fixed<<Variant>>` and what is under it): the arms
@@ -1276,7 +1304,7 @@ fn ExistsArms lx, env, s, arms, t, span:
 TriedAt: unbounded fn Lx, Env, Text, Text, Text, [Text], [((Text, Ty))], (Text ==> Ty), (Text ==> Text), Nat, Pattern, Arm, Ty -> Ex
 fn TriedAt lx, env, label, held, stem, vs, kinds, fresh, fixed, i, p, arm, pty = match vs[i]:
     nil:
-        let value = XCallAt (RefRuntime "prism_rtl::unpacked"), [[(OutTyOf lx, pty)]], [[(XRef (XVar held))]]
+        let value = UnpackedAt lx, fresh, pty, (XVar held)
         let po = ArmPat lx, (? p), pty, Owned, "{stem}_arm"
         let env2 = BindAll env, po.binds
         let guard = match arm.?guard:
@@ -3848,11 +3876,17 @@ fn PlainLambda lx, env, ps, body, ft:
         # (`OutQuantified`, where the closure is cast to it)
         OutQuantified b: Each ps, \|ignore| OutQuantified b
         otherwise: [[]]
-    let ((dos, env1)) = LambdaCaptures env, (WithInstances env, (LambdaReads ps, body))
-    let ((pas, env2)) = ClosureParams (WholeLambda lx, pts), env1, ps, pts, True
+    let ((dos0, env1)) = LambdaCaptures env, (WithInstances env, (LambdaReads ps, body))
+    # (and the kinded variables' variants, each its own value the closure takes: a
+    # definition's hidden parameter is a reference the function value would outlive,
+    # `Supplying<<Game, Player>>`'s supplier, rustc "lifetime may not live long enough",
+    # doc-supplier-of-a-generic-function-answers-a-response-over-its-document)
+    let ((kdos, lxk)) = KindedCaptured lx
+    let dos = Append dos0, kdos
+    let ((pas, env2)) = ClosureParams (WholeLambda lxk, pts), env1, ps, pts, True
     # (`#lambda` marks a function value's body: a `$` argument of a function of the block
     # it calls is the argument's live dynamic there, `?LiveArgument`)
-    let v = LambdaBodyValue (WholeLambdaBody lx, pts, ft), (Bind env2, "#lambda", (BnLocal XUnit, Owned, OutUnit)), body
+    let v = LambdaBodyValue (WholeLambdaBody lxk, pts, ft), (Bind env2, "#lambda", (BnLocal XUnit, Owned, OutUnit)), body
     # Cast to its function type, so that two lambdas meet where one type is wanted (an
     # array's elements, an `if`'s or a `match`'s arms), each a closure type of its own.
     VlOwned (XBlock dos, (XCast (XCall (RefRuntime "std::Rc::new"), [[(XClosure True, pas, (Own v))]]), ft)), ft
