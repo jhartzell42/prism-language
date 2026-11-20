@@ -840,8 +840,11 @@ fn DirectOperands e = match e.kind:
 # (@Named "ada")` in `[[(("ada", $ (@Named "ada")))]]` a constant dynamic of the blueprint
 # (sem-widget-given-a-list-of-pairs-holding-live-blueprints; q17 gave the bare blueprint
 # for it in a widget's argument, rustc E0308).
-PartValueOf: unbounded fn Lx, Env, Expr -> Vl
-fn PartValueOf lx, env, x = if (not lx.whole) and (LayerOf (TypeAt lx, x.span)) == LyDyn: ValueOf (update lx:
+# A literal itself lifted over its parts (`{{$next: Added $next}} on !add`, todos) reads them
+# as any lifted expression does: only a plain literal holds a dynamic whole (q22 took
+# `$next` whole there and refused it, gap LF).
+PartValueOf: unbounded fn Lx, Env, Expr, Expr -> Vl
+fn PartValueOf lx, env, literal, x = if (not lx.whole) and (LayerOf (TypeAt lx, literal.span)) == LyPlain and (LayerOf (TypeAt lx, x.span)) == LyDyn: ValueOf (update lx:
     &_.whole <= True
 ), env, x else: ValueOf lx, env, x
 
@@ -856,12 +859,12 @@ fn PlainValueByKind lx, env, e:
             ? (BnLocal rs, mode, bt): LocalPlace rs, mode, bt
             otherwise: VlOwned (InternalBug "`{b}` outside a `for` (the checker's `unknown-name`)"), t
         ENil ignore: VlOwned (XTyped (XNone), t), t
-        ETuple es: VlOwned (XTuple (Each es, \|x| Own (PartValueOf lx, env, x))), t
+        ETuple es: VlOwned (XTuple (Each es, \|x| Own (PartValueOf lx, env, e, x))), t
         EArray [[]]: VlOwned (XTyped (XCall (RefRuntime "rt::Array::new"), [[]]), t), t
         # an optional's or a fault's elements at their type (`[[~ 1, Error(..)]]`)
-        EArray es: VlOwned (XCall (RefRuntime "rt::Array::from"), [[XVec (Each es, \|x| ElementAt t, (Own (PartValueOf lx, env, x)))]]), t
+        EArray es: VlOwned (XCall (RefRuntime "rt::Array::from"), [[XVec (Each es, \|x| ElementAt t, (Own (PartValueOf lx, env, e, x)))]]), t
         EMap [[]]: VlOwned (XTyped (XCall (RefRuntime "rt::Map::new"), [[]]), t), t
-        EMap kvs: VlOwned (XCall (HelperRef "map_of"), [[XVec (Each kvs, \|((k, v))| XTuple [[Own (ValueOf lx, env, k), Own (PartValueOf lx, env, v)]])]]), t
+        EMap kvs: VlOwned (XCall (HelperRef "map_of"), [[XVec (Each kvs, \|((k, v))| XTuple [[Own (ValueOf lx, env, k), Own (PartValueOf lx, env, e, v)]])]]), t
         EGroup x: ValueOf lx, env, x
         EHold x: ValueOf lx, env, x
         ECall c, args, ignore, ignore: match ?LensCall lx, e:

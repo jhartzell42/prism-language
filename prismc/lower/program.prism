@@ -1322,8 +1322,10 @@ fn ModDefOf lx0, m, roots, info, mods:
     let traits = Fold (Values lx.g.traits), [[]], \|acc, tr| if tr.home == m: Fold tr.methods, (Append (Push acc, (ItTrait (TraitDefOf lx, tr))), (PackedItems lx, tr)), \|a, k| Append a, (ValuedRows (InModule lx, tr.file, m), k, nil) else: acc
     # (a derived impl is the type's own structure, `TyDefs`; the one a `^Pod` type has of
     # the library's `^SerializableValue` is written here, `DerivedPodSerializable`, and
-    # the primitives' beside the trait)
-    let impls0 = Fold (Values lx.g.impls), [[]], \|acc, ims| Fold ims, acc, \|a, im| if im.home == m and not im.derived: Push a, (ItImpl (ImplDefOf (InModule lx, im.file, m), im)) else: if im.home == m and im.derived and im.cls == podSerializable: Push a, (ItImpl (DerivedPodSerializable (InModule lx, im.file, m), im)) else: a
+    # the primitives' beside the trait; none in a program that emits no library module
+    # holding the trait, ts-ch03-existential-pod-packed, where q22 wrote the impls of a
+    # trait the crate has not, rustc E0405)
+    let impls0 = Fold (Values lx.g.impls), [[]], \|acc, ims| Fold ims, acc, \|a, im| if im.home == m and not im.derived: Push a, (ItImpl (ImplDefOf (InModule lx, im.file, m), im)) else: if im.home == m and im.derived and im.cls == podSerializable and HasText mods, (Or lx.g.traits[podSerializable], dummyTraitInfo).home: Push a, (ItImpl (DerivedPodSerializable (InModule lx, im.file, m), im)) else: a
     let impls = Fold (Values lx.g.traits), impls0, \|acc, tr| if tr.home == m and tr.name == podSerializable: Append acc, (Each (BuiltinPodSerializable lx), \|i| ItImpl i) else: acc
     let uses = Filter (Each mods, \|o| RustModName o), \|o| o != (RustModName m)
     ModDef(name=(RustModName m), prism=m, path=path, uses=uses, items=(Append (Append (Append (Append types, tags), traits), impls), defs))

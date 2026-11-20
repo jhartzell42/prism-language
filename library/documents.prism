@@ -329,7 +329,8 @@ trait ^SerializableDocument d where d: ^StateDocument, State d: ^SerializableVal
         !again <- @Defer (!Filter (?StillWaiting !outcome))
         let !heard = (Values !fired) <| ([[]] on !again)
         let !outcome = StepHeardWhenKnown<<d>> $?state, $seated, (Keys $guests), $waiting, !heard
-        $?state <- nil then ? ((Decoded<<d>> initial, (!Arrived $?bytes)) <| (!Filter (?StateOf !outcome)))
+        !read <- @Arrived $?bytes                                      # the file, read once
+        $?state <- nil then ? ((Decoded<<d>> initial, !read) <| (!Filter (?StateOf !outcome)))
         $waiting <- [[]] then WaitingOf !outcome
         $seated <- [[]] then SeatsIn (Keys (!Updated $guests))
         !written <- Seat.Request(!requests=(Replace (Encode (!Filter (?StateOf !outcome)))))   # write through
@@ -343,9 +344,20 @@ fn Decoded initial, bytes = if (Len bytes) == 0: initial else: match ~Decode<<St
     ~ state: state
     otherwise: initial
 
-# The first value a loading dynamic takes, as an event: fires once, when it arrives.
-!Arrived: fn $?a -> !a
-fn !Arrived $?value = !Filter (!Updated $?value)
+# The first value a loading dynamic takes, as an event: fires once, as the widget starts
+# if the value is there already (a host's dynamic answer is told in the tick its place is
+# built, so a file whose bytes are known then never updates to them), and otherwise when
+# it arrives. A later change fires nothing: the file is read once.
+@Arrived: fn prompt $?a -> @!a emit unit
+fn @Arrived $?value:
+    !born <- @started
+    let !known = !Filter (($?value on !born) <| !Updated $?value)
+    $arrived <- False then True on !known
+    @ !Filter (?UnlessAlready $arrived, !known)
+
+# A value, unless one came before it.
+?UnlessAlready: fn Bool, a -> ?a
+fn ?UnlessAlready already, value = if already: nil else: ? value
 
 # ---- the file document (chapter 7): bytes, an editor that replaces them, viewers
 
@@ -556,7 +568,8 @@ fn @Queried at, !heard:
         match _:
             ? query:
                 $?answer <- Seat.Query($query=$ query)
-                @ (Answering at, (AnswerBytes<<d, r>> $?answer)) on (Happened (!Updated $?answer))
+                !asked <- @started              # the answer as the place starts, then as it changes
+                @ (Answering at, (AnswerBytes<<d, r>> $?answer)) on (!asked <| Happened (!Updated $?answer))
             nil: @ never
     !sending <- @Switch $!sent
     @ !sending
