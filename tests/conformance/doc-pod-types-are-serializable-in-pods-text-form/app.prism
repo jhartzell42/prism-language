@@ -20,6 +20,15 @@ type Mark = choice:
     Marked Nat
 derive ^Eq, ^Debug, ^Pod
 
+# (a type that prints its own way is written by its structure all the same: examples/chess's
+# `Square`, which q19 wrote as it prints, `a1`, and could not read back)
+type Spot = record:
+    at: Nat
+derive ^Eq, ^Pod
+
+impl ^Debug Spot:
+    fn Debug spot = "spot {spot.at}"
+
 YesNo: fn Bool -> Text
 fn YesNo True = "yes"
 fn YesNo False = "no"
@@ -39,3 +48,4 @@ fn Refused ~failed = "refused"
     Ui.Label($text=$"read back: {ReadsBack Tally(total=7, name="ada")} {ReadsBack (Marked 3)} {ReadsBack Blank}")       # 1
     Ui.Label($text=$"primitives: {ReadsBack<<Nat>> 7} {ReadsBack "seven"} {ReadsBack True}")                                   # 2
     Ui.Label($text=$"a mark's bytes as a tally: {Refused (~Decode<<Tally>> (Encode (Marked 3)))}")                      # 3
+    Ui.Label($text=$"a type with its own print: {ReadsBack Spot(at=2)}")                                               # 4

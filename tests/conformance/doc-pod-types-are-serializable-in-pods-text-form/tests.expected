@@ -7,3 +7,4 @@ tick 0
     1: Ui.Label(text="read back: yes yes yes")
     2: Ui.Label(text="primitives: yes yes yes")
     3: Ui.Label(text="a mark's bytes as a tally: refused")
+    4: Ui.Label(text="a type with its own print: yes")
