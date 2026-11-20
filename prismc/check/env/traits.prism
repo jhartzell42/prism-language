@@ -486,8 +486,8 @@ fn SolveOne g, st, givens, w:
         TyRigid v:
             if (HasPrefix w.cls, "Range ") or w.cls == "Prelude.Sub" or w.cls == "Prelude.Signed": (([[]], st))
             else: if Fold (Append givens, st.anyGivens), False, \|seen, ((gv, gc))| seen or (gv == v and HasText (SuperClosure g, gc), w.cls):
-                # the type hidden in an existential unpacked at a parameter (`e'N`)
-                if HasPrefix v, "e'":
+                # the type hidden in an existential unpacked at a parameter
+                if IsHiddenRigid v:
                     let bounds = Fold st.anyGivens, [[]], \|acc, ((gv, gc))| if gv == v: Push acc, "^{BareName gc}" else: acc
                     (([[]], Restore (AskOfPacked g, (Solved s0, w, t, "given"), w, "any {Join bounds, " "}")))
                 else: (([[]], (Solved st, w, t, "given")))

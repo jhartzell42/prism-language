@@ -1235,6 +1235,87 @@ fn OpenedAt lx, env, label, vs, kinds, fresh, i, p, arm, pty, t = match vs[i]:
         # as types are, which the lowering erases)
         otherwise: OpenedAt lx, env, label, vs, kinds, fresh, i + 1, p, arm, pty, t
 
+# `match s:` of several arms over an existential of kinded variables, some `any p` (Part
+# III ch. 6: its arms by the role's `Fixed<<Variant>>` and what is under it): the arms
+# are tried in page order inside one labelled block, each `any` arm opened as a lone one
+# is (`OpenedAt`) and leaving the block with its body's value where its pattern takes the
+# value read back; an arm with no `any` is matched against the packed value itself. An
+# arm whose pattern fixes a variable's variant (`FixedIn`) is lowered at that variant
+# alone: at another its pattern is of another type, `Declined (StopsAt most)` against a
+# watcher's `Never` (doc-existential-match-by-role-and-response-exhaustive).
+ExistsArms: unbounded fn Lx, Env, Expr, [Arm], OutTy, Range -> Vl
+fn ExistsArms lx, env, s, arms, t, span:
+    let held = "opened{SpanStem span}"
+    let label = "'{held}"
+    match Peel (TypeAt lx, s.span):
+        TyExists vs, b, ignore, kinds:
+            let packed = Own (ValueOf lx, env, s)
+            let tries = Each (Range0 (Len arms)), \|i|
+                let arm = Or arms[i], dummyArm
+                match arm.?pattern:
+                    ? (Pattern(kind=(PAny p), span=ignore2)):
+                        let pty = PatternTyOf lx, p
+                        let fresh = Or (?ParamMatch b, pty, {{}}), {{}}
+                        DoExpr (TriedAt lx, env, label, held, "{held}_{i}", vs, kinds, fresh, (FixedIn lx, {{}}, p, pty), 0, p, arm, pty)
+                    nil: DoExpr (XBreak label, (OwnAs t, (BlockValue lx, env, arm.body)))
+                    ? other:
+                        let po = RustPat lx, other, (TypeAt lx, s.span), ByRef, "{held}_{i}"
+                        let env2 = BindAll env, po.binds
+                        let guard = match arm.?guard:
+                            ? ge: [[CcIf (AsBool (ValueOf lx, env2, ge))]]
+                            nil: [[]]
+                        let hit = XArm(pat=po.pa, conds=(Append po.conds, guard), body=(XBreak label, (OwnAs t, (BlockValue lx, env2, arm.body))))
+                        DoExpr (Own (ArmsValue (XRef (XVar held)), [[hit, XArm(pat=PaWild, conds=[[]], body=XUnit)]], "{held}_{i}", OutUnit))
+            VlOwned (XLabeled label, (Append [[(DoLet (PaBind held), packed)]], tries), XUnreachable, t), t
+        other: VlOwned (InternalBug "an `any` arm over a value that is no existential"), t
+
+# One `any` arm of several, tried: the variant numbers read from the packed value pick the
+# variant the arm is lowered at, as `OpenedAt` does, and the arm leaves the labelled block
+# with its body's value where its pattern takes the value; else nothing, and the next arm
+# is tried.
+TriedAt: unbounded fn Lx, Env, Text, Text, Text, [Text], [((Text, Ty))], (Text ==> Ty), (Text ==> Text), Nat, Pattern, Arm, Ty -> Ex
+fn TriedAt lx, env, label, held, stem, vs, kinds, fresh, fixed, i, p, arm, pty = match vs[i]:
+    nil:
+        let value = XCallAt (RefRuntime "prism_rtl::unpacked"), [[(OutTyOf lx, pty)]], [[(XRef (XVar held))]]
+        let po = ArmPat lx, (? p), pty, Owned, "{stem}_arm"
+        let env2 = BindAll env, po.binds
+        let guard = match arm.?guard:
+            ? ge: [[CcIf (AsBool (ValueOf lx, env2, ge))]]
+            nil: [[]]
+        let hit = XArm(pat=po.pa, conds=(Append po.conds, guard), body=(XBreak label, (Own (BlockValue lx, env2, arm.body))))
+        Own (ArmsValue value, [[hit, XArm(pat=PaWild, conds=[[]], body=XUnit)]], "{stem}_arm", OutUnit)
+    ? q: match fresh[q]:
+        ? (TyRigid r):
+            let variants = KindVariants lx, (KindOfVar kinds, q)
+            let number = XCallAt (RefRuntime "prism_rtl::kind_of"), [[OutNat]], [[(XRef (XVar held)), (XIndex i)]]
+            match variants[Dec (Len variants)]:
+                nil:
+                    let kind = "{stem}_kind{i}"
+                    let lxk = update lx:
+                        &_.kinded <= Insert &_.kinded, r, ((kind, ""))
+                    XBlock [[(DoLet (PaBind kind), number)]], (TriedAt lxk, env, label, held, stem, vs, kinds, fresh, fixed, i + 1, p, arm, pty)
+                ? last:
+                    let At = \|k| TriedAt (update lx:
+                        &_.subst <= Insert &_.subst, r, (TyRole k)
+                    ), env, label, held, stem, vs, kinds, fresh, fixed, i + 1, p, arm, pty
+                    match fixed[r]:
+                        ? k: XIf (XBin OpEq, number, (VariantNumberOf lx, k)), (At k), XUnit
+                        nil: Fold (Take variants, (Dec (Len variants))), (At last), \|rest, k| XIf (XBin OpEq, number, (VariantNumberOf lx, k)), (At k), rest
+        otherwise: TriedAt lx, env, label, held, stem, vs, kinds, fresh, fixed, i + 1, p, arm, pty
+
+# The kinded variables a pattern fixes, each with the variant its `Fixed<<Variant>>` names
+# where the value's type is `Fixed` of the variable (ruling VO), through tuples and groups.
+FixedIn: unbounded fn Lx, (Text ==> Text), Pattern, Ty -> (Text ==> Text)
+fn FixedIn lx, found, p, ty = match ((p.kind, Peel ty)):
+    (((PTypeArgs ignore, tys), (TyCon "Prelude.Fixed", [[(TyRigid q)]]))): match (Or tys[0], Type(kind=TAbsent, span=p.span)).kind:
+        TName n, [[]]: match ?RoleConstructor lx.g, lx.home, (Dotted n.path):
+            ? k: Insert found, q, k
+            nil: found
+        otherwise: found
+    (((PGroup inner), whole)): FixedIn lx, found, inner, whole
+    (((PTuple ps), (TyTuple ts))): Fold (Range0 (Len ps)), found, \|acc, i| FixedIn lx, acc, (Or ps[i], dummyPat), (Or ts[i], TyErr)
+    otherwise: found
+
 # A bound that is a trait of the prelude, by its bare name: its packing is the runtime's
 # and the emitted prelude's own, `with_` and the name (`with_show`, `with_num`). A
 # program's trait gives a dictionary (`PackedDef`).
@@ -1548,7 +1629,8 @@ ClosedOutBut: fn [Text], OutTy -> Bool
 fn ClosedOutBut named, t = match t:
     OutGen g: HasText named, g
     OutQuantified ignore: False
-    OutAssoc ignore, ignore2, ignore3: False
+    # (an associated type of a type that can be said, `<D as Document_t>::State`)
+    OutAssoc ignore, ignore2, owner: ClosedOutBut named, owner
     OutRefused ignore: False
     OutNamed ignore, args: Fold args, True, \|ok, a| ok and ClosedOutBut named, a
     OutOpt x: ClosedOutBut named, x
@@ -2042,7 +2124,45 @@ fn ValuedMissNote lx, qk, span, args:
     let instances = match ?EnclosingInstances lx:
         ? users: Debug users
         nil: "none"
-    " (diagnostic: looked up `{looked}` at {PlaceKey lx, span} in `{lx.inDefinition}`; collected {Debug collected}; the checker's instantiation there {solved}; the enclosing definition's instantiations {instances})"
+    " (diagnostic: looked up `{looked}` at {PlaceKey lx, span} in `{lx.inDefinition}`; collected {Debug collected}; the checker's instantiation there {solved}; the enclosing definition's instantiations {instances}{CollectionNote lx, qk, span})"
+
+# (and what the collection of valued widgets, `ValuedWidgets`, reads of the same reading
+# in the definition that holds it, under no instantiation: that definition's
+# instantiations and uses, the types the reading gives the widget there and at each of
+# them, what the collection gathers of it, and whether each gathered set of types has
+# rows, `?ValuedCases`; q13's generic-widget-answer-in-a-trait-default-supplier, whose
+# reading no reading of the code explained)
+CollectionNote: unbounded fn Lx, Text, Range -> Text
+fn CollectionNote lx, qk, span = match lx.g.vals[qk]:
+    nil: ""
+    ? v: Fold lx.g.defs, "", \|said, d| if d.file != lx.file: said else:
+        let lxd = update (InModule lx, d.file, d.home):
+            &_.inDefinition <= InstanceKey d
+            &_.subst <= {{}}
+        Fold (DefExprs d), said, \|said2, e| match e.kind:
+            ECall c, args, ignore, ignore2 if (CalleeNameStart c) == span.start and (BlueprintQk lxd, c) == qk:
+                let instances = match ?EnclosingInstances lxd:
+                    ? users: Debug users
+                    nil: "none"
+                let users = InstancesOrUses lxd
+                let atEach = Each users, \|user| ShownTypes (?ValuedTypes (update lxd:
+                    &_.subst <= Fold user, &_.subst, \|m, ((q, t))| Insert m, q, t
+                ), v, c.span, args)
+                let gathered = ValueWidgetsAt lxd, e
+                let rowed = Each gathered, \|((gqk, types))| IsSome (?ValuedCases lx, gqk, types, "diagnostic")
+                "{said2}; the collection in `{InstanceKey d}`: its instantiations {instances}, its instantiations or uses {Debug users}, the reading's types there {ShownTypes (?ValuedTypes lxd, v, c.span, args)}, at each of them {Debug atEach}, gathered {Debug gathered}, each with rows {Debug rowed}"
+            otherwise: said2
+
+# Where the name an expression calls starts, under its type arguments and groups.
+CalleeNameStart: fn Expr -> Nat
+fn CalleeNameStart e = match e.kind:
+    ETypeArgs x, ignore: CalleeNameStart x
+    EGroup x: CalleeNameStart x
+    otherwise: e.span.start
+
+ShownTypes: fn ?[((Text, Ty))] -> Text
+fn ShownTypes (? types) = Debug types
+fn ShownTypes nil = "none"
 
 WidgetValueWords: fn Text -> Text
 fn WidgetValueWords qk = "the widget function {BareName qk} as a value: a blueprint value is a supplier's answer that builds no place (`@ x`, `@Element e`, a `match` of them); one with places is a widget-function blueprint as an answer (pick HO)"
@@ -3938,7 +4058,14 @@ fn MatchValue lx, env, s, arms, t, span = match arms:
             PAny inner: ExistsMatch lx, env, s, arm, inner, t, span
             otherwise: PlainMatchValue lx, env, s, arms, t, span
         nil: PlainMatchValue lx, env, s, arms, t, span
-    otherwise: PlainMatchValue lx, env, s, arms, t, span
+    otherwise: if Fold arms, False, \|f, arm| f or IsAnyArm arm: ExistsArms lx, env, s, arms, t, span else: PlainMatchValue lx, env, s, arms, t, span
+
+IsAnyArm: fn Arm -> Bool
+fn IsAnyArm arm = match arm.?pattern:
+    ? p: match p.kind:
+        PAny ignore: True
+        otherwise: False
+    nil: False
 
 PlainMatchValue: unbounded fn Lx, Env, Expr, [Arm], OutTy, Range -> Vl
 fn PlainMatchValue lx, env, s, arms, t, span:

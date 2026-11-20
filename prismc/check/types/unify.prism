@@ -415,6 +415,16 @@ fn ForallRigidName v, n = "{v}#forall{n}"
 IsForallRigid: fn Text -> Bool
 fn IsForallRigid name = Contains name, "#forall"
 
+# The rigid type that stands for what an existential hides, where one is unpacked at a
+# parameter (`ArgOrUnpack`): named after `any`, a word no type variable of a program is,
+# and its number (`HiddenRigid`). The lowering holds a value of it packed, as the
+# existential does (`OutTyOf`).
+IsHiddenRigid: fn Text -> Bool
+fn IsHiddenRigid name = HasPrefix name, "any'"
+
+HiddenRigid: fn Nat -> Text
+fn HiddenRigid number = "any'{number}"
+
 # Two existential variables at one position (`\u{0}x0\u{0}r`, `\u{0}x0\u{0}s`).
 AtPosition: fn [Text], Text -> Text
 fn AtPosition xs, y = Or (Filter xs, \|x| SameExistsVar x, y)[0], y

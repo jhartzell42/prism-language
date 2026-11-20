@@ -904,7 +904,9 @@ fn ValueWidgetsOfBlock lx, b = match (Or b.stmts[Dec (Len b.stmts)], dummyStmtL)
 PlacedWidget: unbounded fn Lx, Text, Range, [Arg] -> [((Text, [((Text, Ty))]))]
 fn PlacedWidget lx, qk, calleeSpan, args = match lx.g.vals[qk]:
     ? v:
-        let defined = Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsWidgetDef d)
+        # (or a trait's method, whose clauses are an impl's or the trait's default,
+        # `ValuedClauses`; trait-widget-method-an-impl-writes-read-as-a-value)
+        let defined = (IsTraitMethod lx, qk) or Fold lx.g.defs, False, \|f, d| f or (d.qk == qk and IsWidgetDef d)
         # (a reading inside a generalized `let` or local function, at that one's own
         # type variable, is a reading at each of its instantiations, `AtLetInstantiations`)
         let Closed = \|lxAt, types| Fold (AtLetInstantiations lxAt, types), [[]], \|acc, lxk| match ?ValuedTypes lxk, v, calleeSpan, args:
@@ -946,8 +948,13 @@ fn AtOpenedVariants lx, at:
             ? (Pattern(kind=(PAny p), span=ignore)) if arm.span.start <= at.start and at.end <= arm.span.end: match Peel (TypeAt lx, s.span):
                 TyExists vs, b, ignore2, kinds:
                     let fresh = Or (?ParamMatch b, (PatternTyOf lx, p), {{}}), {{}}
+                    # (an arm whose pattern fixes the variable's variant is lowered at
+                    # that one alone, `TriedAt`)
+                    let fixed = FixedIn lx, {{}}, p, (PatternTyOf lx, p)
                     Fold vs, acc2, \|acc3, q| match fresh[q]:
-                        ? (TyRigid r): Push acc3, ((r, (KindVariants lx, (KindOfVar kinds, q))))
+                        ? (TyRigid r): match fixed[r]:
+                            ? k: Push acc3, ((r, [[k]]))
+                            nil: Push acc3, ((r, (KindVariants lx, (KindOfVar kinds, q))))
                         otherwise: acc3
                 otherwise: acc2
             otherwise: acc2
@@ -977,6 +984,10 @@ fn AtLetInstantiations lx, types:
 # (and a trait's default for a widget method, whose rows are the impl's own method's
 # where the impl at the reading's type writes one, `ValuedClauses`: examples/chess's
 # `$ (@Serve<<ChessGame>> ..)`, trait-default-widget-read-as-a-value)
+# Whether a name is a method of a trait.
+IsTraitMethod: fn Lx, Text -> Bool
+fn IsTraitMethod lx, qk = Fold (Values lx.g.traits), False, \|f, tr| f or HasText tr.methods, qk
+
 IsWidgetDef: fn Def -> Bool
 fn IsWidgetDef d = match d.body:
     DbWidget ignore: True
@@ -1302,7 +1313,10 @@ fn ModDefOf lx0, m, roots, info, mods:
     let types = Fold (Values lx.g.types), [[]], \|acc, ti| if ti.home == m: Append acc, (TyDefs lx, ti) else: acc
     let tags = Fold (Values lx.g.tags), [[]], \|acc, tg| if tg.home == m and tg.kind != "Prelude.Fault": Append acc, (TagItems lx, tg) else: acc
     let defs = Fold lx.g.defs, [[]], \|acc, d| if d.home == m: Append acc, (DefItems (InModule lx, d.file, m), d, roots) else: acc
-    let traits = Fold (Values lx.g.traits), [[]], \|acc, tr| if tr.home == m: Append (Push acc, (ItTrait (TraitDefOf lx, tr))), (PackedItems lx, tr) else: acc
+    # (with the rows of each of its widget methods the program reads as a value,
+    # `ValuedRows`: a method's clauses are an impl's or the trait's default, so the rows
+    # stand with the trait, trait-default-widget-read-as-a-value)
+    let traits = Fold (Values lx.g.traits), [[]], \|acc, tr| if tr.home == m: Fold tr.methods, (Append (Push acc, (ItTrait (TraitDefOf lx, tr))), (PackedItems lx, tr)), \|a, k| Append a, (ValuedRows (InModule lx, tr.file, m), k, nil) else: acc
     let impls = Fold (Values lx.g.impls), [[]], \|acc, ims| Fold ims, acc, \|a, im| if im.home == m and not im.derived: Push a, (ItImpl (ImplDefOf (InModule lx, im.file, m), im)) else: a
     let uses = Filter (Each mods, \|o| RustModName o), \|o| o != (RustModName m)
     ModDef(name=(RustModName m), prism=m, path=path, uses=uses, items=(Append (Append (Append (Append types, tags), traits), impls), defs))

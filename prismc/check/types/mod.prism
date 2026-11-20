@@ -214,7 +214,7 @@ type St = record:
     # keeps one id (pick UN).
     localNext: Nat
     localIds: (Text ==> Nat)
-    # The bounds of every existential unpacked at a parameter, by its rigid type (`e'N`,
+    # The bounds of every existential unpacked at a parameter, by its rigid type (`HiddenRigid`,
     # Type System ch. 5): givens for the rest of the program.
     anyGivens: [((Text, Text))]
     # a trait's bounds on types of its parameter, given in its default bodies

@@ -501,21 +501,21 @@ fn PlainBeside st, params, argTys:
 
 # An existential at a parameter that is not one is unpacked there (Type System ch. 5,
 # "Existentials are dictionaries"; doubt EP): the parameter's bare variable becomes a fresh
-# rigid type, `e'N`, with the existential's bounds as givens, which may not reach the
+# rigid type (`HiddenRigid`), with the existential's bounds as givens, which may not reach the
 # call's result (`existential-escape`). A second existential meeting that rigid type hides
 # a type of its own, so the two do not meet; an `any` itself has no impl of its bounds.
 ArgOrUnpack: unbounded fn Env, St, Text, Ty, Ty, Ty, Arg, Ty, Range -> St
 fn ArgOrUnpack env, st, fname, param, pnow, at, a, res, span = match Walk st, at:
     TyAny bounds: match pnow:
         TyFlex n:
-            let hidden = "e'{st.next}"
+            let hidden = HiddenRigid st.next
             let st2 = update st:
                 &_.next += 1
                 &_.anyGivens <= Append &_.anyGivens, (Each bounds, \|b| ((hidden, b)))
             let st3 = Unify st2, pnow, (TyRigid hidden), a.value.span
             if HasNat (FreeVars st, res), n: Err st3, "existential-escape", span, "the type hidden in `{ShowTy st, at}` would leave it here"
             else: st3
-        TyRigid r if HasPrefix r, "e'": Err st, "mismatch", a.value.span, "two existentials meet here, each `{ShowTy st, at}` hiding a type of its own"
+        TyRigid r if IsHiddenRigid r: Err st, "mismatch", a.value.span, "two existentials meet here, each `{ShowTy st, at}` hiding a type of its own"
         otherwise: PlainArg env, st, fname, param, at, a
     otherwise: PlainArg env, st, fname, param, at, a
 

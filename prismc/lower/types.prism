@@ -104,7 +104,11 @@ fn OutTyOf lx, t = match t:
         ? x: OutTyOf lx, x
         # (a quantified type's variable, opened where a value of it was checked: held
         # packed, as the quantified type holds it, ruling FA)
-        nil: if IsForallRigid n: OutNamed (RefRuntime "prism_rtl::Packed"), [[]] else: OutGen (Camel n)
+        # (and the type an existential hides, unpacked at a parameter: the value stays
+        # packed, and the trait's impl for a packed value answers its methods, `Weigh
+        # (Hide 3)`; q13 named it to Rust, `<E'16 as Weighed_t>::weigh_f`,
+        # ts-ch03-existential-associated-type)
+        nil: if (IsForallRigid n) or IsHiddenRigid n: OutNamed (RefRuntime "prism_rtl::Packed"), [[]] else: OutGen (Camel n)
     # A variable is a generalized local `let`'s, given at its instance or quantified; the
     # checker settles every other before the typed output (`DefaultFree`), so one here is
     # a checker bug, refused loudly.
