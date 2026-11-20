@@ -556,7 +556,12 @@ fn DynamicLiftOver lx, env, e, srcs:
     let ((kdos, lxk)) = KindedCaptured lx
     let lxp = update lxk:
         &_.whole <= False
-    let caps = Filter (WithInstances env, (ReadNames (ExprsIn e))), \|n| match env.names[n]:
+    # (and the port of an event the expression reads as a value, as a lambda's closure
+    # takes it, `LambdaCaptures`: `@Switch (!Told $count, !changed)` gives the mapped
+    # function the local event; q16 read the port through `self` inside the closure,
+    # rustc E0521, sem-switch-over-a-function-lifted-over-a-dynamic-given-a-local-event)
+    let read = WithInstances env, (ReadNames (ExprsIn e))
+    let caps = Filter (Append read, (Each read, \|n| "{n}#port")), \|n| match env.names[n]:
         ? (BnLocal ignore, ignore, ignore): True
         otherwise: False
     let ((dos, env1)) = Fold caps, ((kdos, env)), \|((acc, en)), n| match env.names[n]:
@@ -705,9 +710,23 @@ fn EventValueOf lx, env, e:
                         # option. `x` is lowered as any operand is (`ValueOf`), so a whole
                         # object read in a widget's value (`@Shows ($n on !go)`) is its dynamic,
                         # sampled at each firing, not a read of the building method's `cx`
+                        # (a dynamic among the operands of a call lifted over the event is read
+                        # at each firing, `Answered $?told, !ask`: the dynamic is made once,
+                        # where the event value is, and the closure samples it at the firing's
+                        # read point; q16 gave the plain function the dynamic itself, rustc
+                        # E0308, sem-plain-function-lifted-over-an-event-samples-a-dynamic-
+                        # inside-a-merge)
+                        let readDyns = if (?SampledOn e) != nil: [[]] else: Filter (MappedOperands e), \|x| (LayerOf (TypeAt lx, x.span)) == LyDyn
+                        let env3 = Fold (Range0 (Len readDyns)), env2, \|en, i| match readDyns[i]:
+                            ? d: BindSpan en, (PlaceKey lx, d.span), (VlOwned (XMethod (XVar "read_dyn{i}"), "sample", [[(XVar "cx")]]), (OutTyOf lx, (Peel (TypeAt lx, d.span))))
+                            nil: en
+                        let readLets = Each (Range0 (Len readDyns)), \|i| DoLet (PaBind "read_dyn{i}"), (Own (WholeValueOf lx, env, (Or readDyns[i], e)))
+                        let lxBody = if (Len readDyns) > 0: (update lxk:
+                            &_.whole <= False
+                        ) else: lxk
                         let bodyValue = match ?SampledOn e:
                             ? x: ValueOf lxk, env2, x
-                            nil: ValueByKind lxk, env2, e
+                            nil: ValueByKind lxBody, env3, e
                         # the expression over the firing's value is a dynamic when it samples one
                         # (`(ToldTo seat, $state) on !born`): the event fires its value at the
                         # firing's read point (`Event::map_at`), not the dynamic
@@ -718,10 +737,10 @@ fn EventValueOf lx, env, e:
                         # the event value is made, and the closure samples it
                         let hoisted = samples and (?SampledOn e) != nil
                         let sampledDynamic = if hoisted: XVar "sampled_dyn" else: Own bodyValue
-                        let closure = if samples: XClosure True, [[(PaTyped (PaBind "y_ev"), (OutRef it)), (PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMethod sampledDynamic, "sample", [[(XVar "cx")]]) else: XClosure True, [[(PaTyped (PaBind "y_ev"), (OutRef it))]], (Own bodyValue)
-                        let made = Push dos, (DoLet (PaBind "src_ev"), src)
+                        let closure = if samples: XClosure True, [[(PaTyped (PaBind "y_ev"), (OutRef it)), (PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (XMethod sampledDynamic, "sample", [[(XVar "cx")]]) else: if (Len readDyns) > 0: XClosure True, [[(PaTyped (PaBind "y_ev"), (OutRef it)), (PaTyped (PaBind "cx"), (OutRef (OutNamed (RefRuntime "rt::Cx"), [[]])))]], (Own bodyValue) else: XClosure True, [[(PaTyped (PaBind "y_ev"), (OutRef it))]], (Own bodyValue)
+                        let made = Append (Push dos, (DoLet (PaBind "src_ev"), src)), readLets
                         let lets = if hoisted: Push made, (DoLet (PaBind "sampled_dyn"), (Own bodyValue)) else: made
-                        VlOwned (XBlock lets, (XMethod (XVar "src_ev"), (if samples: "map_at" else: "map"), [[closure]])), et
+                        VlOwned (XBlock lets, (XMethod (XVar "src_ev"), (if samples or (Len readDyns) > 0: "map_at" else: "map"), [[closure]])), et
                     otherwise: VlOwned (InternalBug "an event value of several events"), et
 
 # The kinded variables' variants a lift's closure reads, each cloned into a local of its
@@ -3631,7 +3650,8 @@ PreludeVariant: fn Text, OutTy -> Text
 fn PreludeVariant name, first = match first:
     OutText: if name == "len": "len_text" else: name
     OutMap ignore, ignore: if HasText [["len", "fold", "each", "filter"]], name: "{name}_map" else: name
-    otherwise: name
+    # (`Print`: the emitted prelude's `print` is the runtime's module of that name)
+    otherwise: if name == "print": "print_nodes" else: name
 
 # `r.field`: a place when `r` is one (Type System ch. 1, "Sigils on fields": `r.?f` reads
 # the same field).

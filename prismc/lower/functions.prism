@@ -178,7 +178,14 @@ fn ClausesBody lx, env, clauses, names, ptys, Body, label, t, ?result:
             let atVariant = match ?result:
                 ? r: OutTyOf lxc, (SubstTy lxc, (Peel r))
                 nil: t
-            let answered = if lxc.subst != lx.subst and atVariant != t: XCallAt (HelperRef "recode"), [[t]], [[(XRef (XBlock [[(DoLet (PaTyped (PaBind "at_variant"), atVariant), value)]], (XVar "at_variant")))]] else: value
+            # (and where the impl's one equation gives the associated type the same type
+            # at every role, `type Answer r = Game`: the body's value is that type and the
+            # trait's method gives plain data,
+            # doc-impl-method-giving-an-associated-type-every-role-gives-one-type)
+            let heldPlain = match ?result:
+                ? r: HasOpenIndexedAssoc (Peel r)
+                nil: False
+            let answered = if (lxc.subst != lx.subst or heldPlain) and atVariant != t: XCallAt (HelperRef "recode"), [[t]], [[(XRef (XBlock [[(DoLet (PaTyped (PaBind "at_variant"), atVariant), value)]], (XVar "at_variant")))]] else: value
             XArm(pat=pa, conds=conds, body=answered)
         Own (ArmsValue scrut, arms, "'{label}", t)
 
@@ -729,6 +736,34 @@ fn ImplDefOf lx, im:
     # `Tallied o`, is the checker's alone, `ParamUsed`, and Rust has no unconstrained one)
     let generics = Each (Filter im.qs, \|q| HasText (TyParamsIn head), (Camel q)), \|q| ((Camel q, (ImplBounds lx, im, q)))
     ImplDef(cls=im.cls, tr=(PathIn lx, tr.home, (TraitName im.cls)), head=head, generics=generics, assocs=(Each im.assocs, \|((an, at))| (((Camel an), (OutTyOf lx, at)))), resultOnly=(ResultOnlyNames lx, tr), methods=methods, doc="")
+
+# The library's trait a `^Pod` type has an impl of with no `impl` written (the checker's
+# `DerivedImpls` and `BuiltinHas`; rulings QD and QH).
+let podSerializable = "Documents.SerializableValue"
+
+# That impl at a type: `Encode` and `~Decode` in `^Pod`'s text form, the emitted prelude's
+# `pod_encode` and `pod_decode` over the type's plain data
+# (doc-pod-types-are-serializable-in-pods-text-form; q16 wrote none, rustc E0277).
+PodSerializableImpl: unbounded fn Lx, OutTy, [((Text, [Text]))] -> ImplDef
+fn PodSerializableImpl lx, head, generics:
+    let tr = Or lx.g.traits[podSerializable], dummyTraitInfo
+    let Method = \|bare| Fold tr.methods, "", \|found, q| if (Base (BareName q)) == bare: q else: found
+    let RustName = \|mq| Or lx.rsNames[mq], (Snake (BareName mq))
+    let bytes = OutArray OutU8
+    let encode = FnDef(name=(RustName (Method "Encode")), generics=[[]], params=[[(("value", (OutRef head)))]], ret=bytes, body=(XCall (HelperRef "pod_encode"), [[XVar "value"]]), doc="", public=False, wheres=[[]])
+    let decode = FnDef(name=(RustName (Method "Decode")), generics=[[]], params=[[(("bytes", (OutRef bytes)))]], ret=(OutRes head), body=(XCall (HelperRef "pod_decode"), [[XVar "bytes"]]), doc="", public=False, wheres=[[]])
+    ImplDef(cls=podSerializable, tr=(PathIn lx, tr.home, (TraitName podSerializable)), head=head, generics=generics, assocs=[[]], resultOnly=(ResultOnlyNames lx, tr), methods=[[encode, decode]], doc="")
+
+# The impl of a type that derives `^Pod`, each of its type parameters plain data too.
+DerivedPodSerializable: unbounded fn Lx, ImplInfo -> ImplDef
+fn DerivedPodSerializable lx, im:
+    let head = OutTyOf lx, im.head
+    PodSerializableImpl lx, head, (Each (Filter im.qs, \|q| HasText (TyParamsIn head), (Camel q)), \|q| ((Camel q, [["std::Clone", "rt::ToPod", "rt::FromPod"]])))
+
+# The impls of the primitives that are `^Pod` (ruling QH; a regular expression is not, and
+# a cursor is no data), and of `Never`, which has no value to write.
+BuiltinPodSerializable: unbounded fn Lx -> [ImplDef]
+fn BuiltinPodSerializable lx = Each [[OutBool, OutUnit, OutChar, OutText, OutNat, OutInt, OutU8, OutFloat, OutPath, OutDuration, (OutNamed (RefRuntime "rt::Never"), [[]])]], \|head| PodSerializableImpl lx, head, [[]]
 
 ImplBounds: unbounded fn Lx, ImplInfo, Text -> [Text]
 fn ImplBounds lx, im, q = Fold im.bounds, [["std::Clone"]], \|acc, ((v, cls))| if v == q: UnionTexts acc, (BoundOf lx, cls) else: acc

@@ -1013,6 +1013,26 @@ pub fn utf8_text_try(bytes: &Array<u8>) -> Result<Text, Error> {
     String::from_utf8(v).map(Text::from).map_err(|_| Error::new("Prelude.NotText", "bytes that are not UTF-8"))
 }
 
+/// `Print` (Type System ch. 2, the POD printed form): one top-level node per line.
+pub fn print_nodes<T: ToPod>(nodes: &Array<T>) -> Text {
+    let lines: Vec<String> = nodes.iter().map(|node| ::prism_rtl::print::show(&node.to_pod())).collect();
+    Text::from(lines.join("\n"))
+}
+
+/// `Encode` of a `^Pod` type, a `^SerializableValue` in `^Pod`'s text form (rulings QD and
+/// QH): what `Print` prints of the one value.
+pub fn pod_encode<T: ToPod + Clone>(value: &T) -> Array<u8> {
+    utf8_bytes(&print_nodes(&Array::from(vec![value.clone()])))
+}
+
+/// `~Decode` of a `^Pod` type: the value its text form spells, refused where the bytes
+/// are no text, the text is no value, or the value is none of the type.
+pub fn pod_decode<T: FromPod>(bytes: &Array<u8>) -> Result<T, Error> {
+    let text = utf8_text_try(bytes)?;
+    let pod = ::prism_rtl::read::value(text.as_str()).map_err(|why| Error::new("Documents.NotAValue", why))?;
+    T::from_pod(&pod).map_err(|fault| Error::new("Documents.NotAValue", fault.message))
+}
+
 /// `Buffer.Numbered n`: `0` to `n - 1`, linear.
 pub fn numbered(n: &Nat) -> Array<Nat> {
     (0..ix(n)).map(nat_of).collect()

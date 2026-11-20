@@ -313,6 +313,9 @@ trait ^SerializableValue s:
     Encode: fn s -> [U8]
     ~Decode: fn [U8] -> ~s
 
+# `~Decode` of a `^Pod` type on bytes that are not a value of it in `^Pod`'s text form.
+tag Documents.NotAValue of Fault
+
 # A document whose state can be written down. `@InFile` sits at a file's editor seat: it
 # reads the file once, when it arrives, and writes it after every change; the hold is the
 # truth, and queries are answered from it. Before the file arrives every request waits
