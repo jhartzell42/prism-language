@@ -16,7 +16,19 @@ use crate::pod::{FromPod, Path, Pod, Segment};
 /// `SeatPathOf`: a seat's own prefix of a place's path, the role's position and the
 /// seat's key (`0/[White]/#g/2` is White's `0/[White]`).
 pub fn seat_path_of(path: &Path) -> Path {
-    Path(path.0.iter().take(2).cloned().collect())
+    // (through the seat's key: a role's tree counts the `for` its seats stand in as a
+    // place of its own before the key, ruling PL, `0/0/[White]/..`; the first two
+    // segments alone were every seat's `0/0`)
+    let through = path.0.iter().position(|s| matches!(s, Segment::Key(_))).map_or(path.0.len(), |i| i + 1);
+    Path(path.0.iter().take(through).cloned().collect())
+}
+
+/// `RolePathOf`: a place's path in the guests' merged tree, from its path in its role's
+/// own tree: under the role's position (`merge`), which is the role's number in its
+/// choice, a document's roles being hosted in that order.
+pub fn role_path_of(role: &crate::num::Nat, path: &Path) -> Path {
+    let position = role.as_int().to_i64().expect("a role's number fits") as u32;
+    Path(vec![Segment::Pos(position)]).join(path)
 }
 
 /// `SeatIdAt`: within one role's tree, a place's first key is its seat id, read back at

@@ -707,8 +707,8 @@ fn @HostDocument Implement, seats:
 @HostRole: forall d (r: Role d). fn Fixed r, $(SeatId d r ==> $@(@a emit Seat.* d r | rest)), Supplier d -> @(($(SeatId d r ==> a), ![SeatId d r], Guests d)) emit rest where d: ^Document
 fn @HostRole role, $seats, Supply:
     (($results, $tree)) <- @Host (@Seated $seats), \|path, prompt element| match element:
-        Seat.Request(..): Supply path, (any ((role, (SeatIdAt<<d, r>> path), element)))
-        Seat.Query(..): Supply path, (any ((role, (SeatIdAt<<d, r>> path), element)))
+        Seat.Request(..): Supply (RolePathOf role, path), (any ((role, (SeatIdAt<<d, r>> path), element)))
+        Seat.Query(..): Supply (RolePathOf role, path), (any ((role, (SeatIdAt<<d, r>> path), element)))
         Seat.Leave(..): @ unit
         otherwise: @Element element
     !leaving <- for at, $element <- $tree:                 # the seats whose participants leave
@@ -734,6 +734,12 @@ fn Touched ignore = unit
 # A role's tree as guests: each seat's places, each with the role and its seat id (the
 # path's first key); a place of another language is not the document's.
 $GuestsOf: forall d (r: Role d). fn Fixed r, $(Path ==> $Elem (Seat.* d r | rest)) -> Guests d where d: ^Document = runtime "documents::guests_of"
+
+# A place's path among the guests, from its path in its role's own tree: under the role's
+# position, as `$Merge` puts the roles' trees (a document's `@HostSeats` hosts its roles in
+# the order their choice declares them). The supplier is asked by this path, the one the
+# implementation hears the place's requests under.
+RolePathOf: forall d (r: Role d). fn Fixed r, Path -> Path = runtime "documents::role_path_of"
 
 # Within one role's tree, a place's first key is its seat id.
 SeatIdAt: forall d (r: Role d). fn Path -> SeatId d r where d: ^Document = runtime "documents::seat_id_at"

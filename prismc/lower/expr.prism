@@ -1019,10 +1019,22 @@ fn PackedParts lx, site, value = match site:
 PartOf: unbounded fn OutTy, Ex -> Ex
 fn PartOf t, value = XCall (RefRuntime (if IsDataPart t: "prism_rtl::Part::data" else: "prism_rtl::Part::held")), [[value]]
 
-# Whether a part's type is plain data Rust can tell so where it stands: no type
-# parameter's (a generic function asks no `ToPod` of one), and nothing live.
+# Whether a part's type is plain data Rust can tell so where it stands, and read back from
+# it: no type parameter's (a generic function asks no `ToPod` of one), nothing live, and no
+# element of the program's (a document's entry is written as plain data and never read
+# from it: its events are the place's own).
 IsDataPart: unbounded fn OutTy -> Bool
-fn IsDataPart t = (Podable t) and not (HoldsGen t)
+fn IsDataPart t = (Podable t) and not (HoldsGen t) and not (HoldsElem t)
+
+HoldsElem: unbounded fn OutTy -> Bool
+fn HoldsElem t = match t:
+    OutNamed r, args: (t == OutNamed elemRef, [[]]) or Fold args, False, \|seen, a| seen or HoldsElem a
+    OutOpt x: HoldsElem x
+    OutRes x: HoldsElem x
+    OutArray x: HoldsElem x
+    OutTuple xs: Fold xs, False, \|seen, x| seen or HoldsElem x
+    OutMap k, v: (HoldsElem k) or HoldsElem v
+    otherwise: False
 
 # A declaration with no body that names its runtime function (ruling RT: `SeatPathOf:
 # fn Path -> Path = runtime "documents::seat_path_of"`), and no definition: a call of
