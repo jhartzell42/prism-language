@@ -3,4 +3,4 @@ test answered
 
 tick 0
   added:
-    0/0/0.[1]/0: Ui.Label(text="told nothing yet")
+    0/0/0.[1]/0: Ui.Label(text="told the player answers")
