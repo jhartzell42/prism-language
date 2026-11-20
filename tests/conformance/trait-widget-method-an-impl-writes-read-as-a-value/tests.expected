@@ -1,0 +1,13 @@
+# Derived by hand under ruling PL (the `for` is the page's 0, the name's row holds the `rebuild` at its 0, generation #0, the impl's method applied there with a list of its own, its button 0 and label 1) from Part III ch. 4 (an impl's method is the trait's at its type) and Semantics ch. 4.
+test served_once
+
+tick 0
+  added:
+    0.["ada"].0.#0.0/0: Ui.Button(label="serve ada")
+    0.["ada"].0.#0.0/1: Ui.Label(text="ada served 0")
+
+tick 1
+  in:
+    0.["ada"].0.#0.0/0: click
+  changed:
+    0.["ada"].0.#0.0/1: Ui.Label(text="ada served 1")

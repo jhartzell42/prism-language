@@ -1,0 +1,30 @@
+# A widget that is a trait's method with no default, written by the impl, with places of
+# its own, read as a value at the impl's type (`$ (@Serve<<Game>> "ada")`), in a live map
+# of blueprints a `for` and a `rebuild` build. The sibling of
+# trait-default-widget-read-as-a-value, whose rows q13 never wrote (rustc E0433: cannot
+# find type `Serve_value_at0_0`): there the rows are the default's clauses, here the
+# impl's, and no definition of the trait's own holds the method.
+# Written by Claude (round after q13), 20 November 2026; subject to change.
+emit Ui.*
+test mod Tests
+
+trait ^Served d:
+    Greeting: fn d -> Text
+    @Serve: fn Text -> @unit emit Ui.*
+
+type Game = choice:
+    Game
+
+impl ^Served Game:
+    fn Greeting game = "a game"
+    fn @Serve name:
+        !click <- Ui.Button($label=$"serve {name}")                        # 0
+        $count <- 0 then $count + 1 on !click
+        Ui.Label($text=$"{name} served {$count}")                          # 1
+
+@page: @unit
+@page:
+    let $served = $ {{"ada": $ (@Serve<<Game>> "ada")}}
+    for name, $@serving <- $served:                                        # 0, at each name
+        rebuild $@serving:
+            _

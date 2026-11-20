@@ -1,0 +1,7 @@
+# The tests of trait-widget-method-an-impl-writes-read-as-a-value.
+emit Ui.*
+use App.*
+
+test served_once, @page:
+    build
+    click at 0.["ada"].0.#0.0/0
