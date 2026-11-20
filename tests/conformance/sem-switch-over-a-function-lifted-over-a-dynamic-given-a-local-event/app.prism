@@ -17,6 +17,6 @@ fn !Told n, !changed = "now {n}" on !changed
     !tell <- Ui.Button($label=$"tell")                                     # 1
     $count <- 0 then $count + 1 on !click
     let !changed = unit on !tell
-    !said <- @Switch (!Told $count, !changed)                              # 2
+    !said <- @Switch (!Told $count, !changed)
     $last <- "nothing" then !said
-    Ui.Label($text=$"said {$last}")                                        # 3
+    Ui.Label($text=$"said {$last}")                                        # 2

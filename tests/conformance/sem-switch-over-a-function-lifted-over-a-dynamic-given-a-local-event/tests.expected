@@ -1,11 +1,11 @@
-# Derived by hand from Semantics ch. 5 (`@Switch` follows the event its dynamic holds) and Type System ch. 4 (a function lifted over a dynamic is applied at each of its values); the label's place number and the tick it moves in are guesses a real run may correct.
+# Derived by hand from Semantics ch. 5 (`@Switch` follows the event its dynamic holds) and Type System ch. 4 (a function lifted over a dynamic is applied at each of its values); the label's place (the switch builds none, ruling TC) is as q18's run numbers it.
 test counted_then_told
 
 tick 0
   added:
     0: Ui.Button(label="count")
     1: Ui.Button(label="tell")
-    3: Ui.Label(text="said nothing")
+    2: Ui.Label(text="said nothing")
 
 tick 1
   in:
@@ -15,4 +15,4 @@ tick 2
   in:
     1: click
   changed:
-    3: Ui.Label(text="said now 1")
+    2: Ui.Label(text="said now 1")
