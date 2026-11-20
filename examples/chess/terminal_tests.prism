@@ -136,12 +136,15 @@ test resigning_and_leaving_at_terminals, @terminals:
 # The test supplies the file, empty: the game is the opening, and a move is written
 # through to the file, a one-shot `Fs.File` write of the game's `^Pod` text. What the text
 # says is the saved game's test's (`tests.prism`, `saved_and_resumed`); this one holds the
-# disk's side: the file is read once and written after a change.
+# disk's side: the file is read once and written after a change, in the tick of the change
+# (the write is the editor seat's request, heard as it fires; the player hears `ok` a tick
+# later, a host's computed answer). Corrected against q22's run: the hand-derived line
+# had the write a tick later.
 test saved_on_disk, @savedOnDisk:
     with Fs.Contents(path="game.pod") = ~ Contents(text=""), build
     compute
     compute
     send Console.Read(name="White", ..), "e2e4"
+        => requested Fs.File(path="game.pod"), Write _
     compute
         => requested Console.Print(name="White", ..), [["ok"]]
-        => requested Fs.File(path="game.pod"), Write _
