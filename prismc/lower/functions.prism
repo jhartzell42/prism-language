@@ -134,7 +134,15 @@ fn ClausesBody lx, env, clauses, names, ptys, Body, label, t, ?result:
         otherwise: False
     if (Len scrutIx) == 0:
         let c = Or clauses[0], dummyClause
-        Body lx, env1, c.body
+        let value = Body lx, env1, c.body
+        # (a result the signature holds as plain data, an associated type at a role only a
+        # value holds, where the body's value is of the one type an impl's equation gives
+        # it at every role: recoded, as a clause's below is)
+        match ?result:
+            ? r:
+                let atBody = OutTyOf lx, (SubstTy lx, (Peel r))
+                if (HasOpenIndexedAssoc (Peel r)) and atBody != t: XCallAt (HelperRef "recode"), [[t]], [[(XRef (XBlock [[(DoLet (PaTyped (PaBind "at_body"), atBody), value)]], (XVar "at_body")))]] else: value
+            nil: value
     else:
         let scrut = match scrutIx:
             [[i]]: XVar (Or (Each names, \|((n, ignore))| n)[i], "arg")

@@ -536,7 +536,7 @@ type PendingRow = record:
 let hostAbove = "host_above"
 
 # The names a node's own methods and the `Node` interface take.
-let nodeHooks = [["path", "build", "wake", "started", "deferred", "answer", "push", "swap", "leave", "patch", "clean_up", "edges", "release", "leave_row", "remove_places"]]
+let nodeHooks = [["path", "place", "seat", "build", "wake", "started", "deferred", "answer", "push", "swap", "leave", "patch", "clean_up", "edges", "release", "leave_row", "remove_places"]]
 
 # A hosted row built at a path of its own (a `for`'s row, a `rebuild`'s generation, a row
 # numbered from 0 where a widget's value is applied) names its places by paths relative to

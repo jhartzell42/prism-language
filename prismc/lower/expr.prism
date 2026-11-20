@@ -835,6 +835,16 @@ fn DirectOperands e = match e.kind:
         otherwise: [[]]
     otherwise: [[]]
 
+# A part of a tuple, array or map literal: a part that is a dynamic is the dynamic itself,
+# whole, wherever the literal stands (ruling HD: a literal keeps its parts whole), `$
+# (@Named "ada")` in `[[(("ada", $ (@Named "ada")))]]` a constant dynamic of the blueprint
+# (sem-widget-given-a-list-of-pairs-holding-live-blueprints; q17 gave the bare blueprint
+# for it in a widget's argument, rustc E0308).
+PartValueOf: unbounded fn Lx, Env, Expr -> Vl
+fn PartValueOf lx, env, x = if (not lx.whole) and (LayerOf (TypeAt lx, x.span)) == LyDyn: ValueOf (update lx:
+    &_.whole <= True
+), env, x else: ValueOf lx, env, x
+
 PlainValueByKind: unbounded fn Lx, Env, Expr -> Vl
 fn PlainValueByKind lx, env, e:
     let t = OutTyOf lx, (Peel (TypeAt lx, e.span))
@@ -846,12 +856,12 @@ fn PlainValueByKind lx, env, e:
             ? (BnLocal rs, mode, bt): LocalPlace rs, mode, bt
             otherwise: VlOwned (InternalBug "`{b}` outside a `for` (the checker's `unknown-name`)"), t
         ENil ignore: VlOwned (XTyped (XNone), t), t
-        ETuple es: VlOwned (XTuple (Each es, \|x| Own (ValueOf lx, env, x))), t
+        ETuple es: VlOwned (XTuple (Each es, \|x| Own (PartValueOf lx, env, x))), t
         EArray [[]]: VlOwned (XTyped (XCall (RefRuntime "rt::Array::new"), [[]]), t), t
         # an optional's or a fault's elements at their type (`[[~ 1, Error(..)]]`)
-        EArray es: VlOwned (XCall (RefRuntime "rt::Array::from"), [[XVec (Each es, \|x| ElementAt t, (Own (ValueOf lx, env, x)))]]), t
+        EArray es: VlOwned (XCall (RefRuntime "rt::Array::from"), [[XVec (Each es, \|x| ElementAt t, (Own (PartValueOf lx, env, x)))]]), t
         EMap [[]]: VlOwned (XTyped (XCall (RefRuntime "rt::Map::new"), [[]]), t), t
-        EMap kvs: VlOwned (XCall (HelperRef "map_of"), [[XVec (Each kvs, \|((k, v))| XTuple [[Own (ValueOf lx, env, k), Own (ValueOf lx, env, v)]])]]), t
+        EMap kvs: VlOwned (XCall (HelperRef "map_of"), [[XVec (Each kvs, \|((k, v))| XTuple [[Own (ValueOf lx, env, k), Own (PartValueOf lx, env, v)]])]]), t
         EGroup x: ValueOf lx, env, x
         EHold x: ValueOf lx, env, x
         ECall c, args, ignore, ignore: match ?LensCall lx, e:
@@ -989,7 +999,7 @@ fn AnyValue lx, env, x, t:
                 # `SeatKey Count` opened as `(Nat, Pod)`; q11 panicked, "two existentials
                 # of different types met",
                 # doc-role-generic-call-lifted-over-an-event-in-an-opened-existential)
-                let erased = OutTyOf lx, b
+                let erased = ErasedSignatureOut lx, b
                 let atSite = OutTyOf lx, (Peel (TypeAt lx, x.span))
                 let said = SaidAs lx, v, atSite
                 let packedValue = if (HasOpenIndexedAssoc b) and erased != atSite: ErasedParts lx, b, (Peel (TypeAt lx, x.span)), said else: said
@@ -1007,9 +1017,9 @@ fn ErasedParts lx, open, site, value = match ((open, site)):
         let parts = Each (Range0 (Len os)), \|i|
             let o = Or os[i], TyErr
             let s = Or ss[i], TyErr
-            if (HasOpenIndexedAssoc o) and (OutTyOf lx, o) != (OutTyOf lx, s): ErasedParts lx, o, s, (XPart (XVar "erased_whole"), i) else: XPart (XVar "erased_whole"), i
+            if (HasOpenIndexedAssoc o) and (ErasedSignatureOut lx, o) != (OutTyOf lx, s): ErasedParts lx, o, s, (XPart (XVar "erased_whole"), i) else: XPart (XVar "erased_whole"), i
         XBlock [[(DoLet (PaBind "erased_whole"), value)]], (XTuple parts)
-    otherwise: XCallAt (HelperRef "recode"), [[(OutTyOf lx, open)]], [[XRef value]]
+    otherwise: XCallAt (HelperRef "recode"), [[(ErasedSignatureOut lx, open)]], [[XRef value]]
 
 # A declaration with no body that names its runtime function (ruling RT: `SeatPathOf:
 # fn Path -> Path = runtime "documents::seat_path_of"`), and no definition: a call of
@@ -1268,8 +1278,12 @@ fn UnpackedAt lx, fresh, pty, packed:
         &_.subst <= Fold (Values fresh), &_.subst, \|m, opened| match opened:
             TyRigid r: Remove m, r
             otherwise: m
-    let whole = XCallAt (RefRuntime "prism_rtl::unpacked"), [[(OutTyOf lxPacked, pty)]], [[(XRef packed)]]
-    if (OutTyOf lxPacked, pty) == (OutTyOf lx, pty): whole else: ReadParts lxPacked, lx, pty, whole
+    # (the packed type is the body's with every associated type at the existential's own
+    # variable plain data, `ErasedSignatureOut`, also where an impl's one equation gives
+    # it one type at every variant, `type SeatId r = unit`: a function generic in the
+    # document packs it as plain data all the same)
+    let whole = XCallAt (RefRuntime "prism_rtl::unpacked"), [[(ErasedSignatureOut lxPacked, pty)]], [[(XRef packed)]]
+    if (ErasedSignatureOut lxPacked, pty) == (OutTyOf lx, pty): whole else: ReadParts lxPacked, lx, pty, whole
 
 # The reverse of `ErasedParts`: a value held with its open associated types plain data,
 # read at the types a lowering that knows them gives, a tuple part by part.
@@ -1278,7 +1292,7 @@ fn ReadParts lxHeld, lx, ty, value = match ty:
     TyTuple parts:
         let read = Each (Range0 (Len parts)), \|i|
             let part = Or parts[i], TyErr
-            if (OutTyOf lxHeld, part) != (OutTyOf lx, part): ReadParts lxHeld, lx, part, (XPart (XVar "held_whole"), i) else: XPart (XVar "held_whole"), i
+            if (ErasedSignatureOut lxHeld, part) != (OutTyOf lx, part): ReadParts lxHeld, lx, part, (XPart (XVar "held_whole"), i) else: XPart (XVar "held_whole"), i
         XBlock [[(DoLet (PaBind "held_whole"), value)]], (XTuple read)
     otherwise: XCallAt (HelperRef "recode"), [[(OutTyOf lx, ty)]], [[XRef value]]
 
