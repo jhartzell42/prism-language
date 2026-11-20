@@ -344,8 +344,11 @@ fn DefinitionRigids lx, d = match d.body:
     DbDefault ignore, cls: match lx.g.traits[cls]:
         ? tr: SortTexts (UnionTexts [[tr.param]], (MethodOwnRigids lx, cls, d.qk))
         nil: [[]]
+    # (and a variable only a bound or an emitted family names, `d` of `@Panel: forall d.
+    # fn prompt @unit emit Ui.* | Asked.* d -> @unit emit Ui.* where d: ^Document`: its
+    # body is written over it all the same, `@AnswerFrom<<d>> path`)
     DbFn ignore: match lx.g.vals[d.qk]:
-        ? v: SortTexts (RigidsIn v.scheme.ty)
+        ? v: SortTexts (Fold v.scheme.bounds, (RigidsIn v.scheme.ty), \|acc, ((q, ignore))| AddText acc, q)
         nil: [[]]
     DbWidget ignore: match lx.g.vals[d.qk]:
         ? v: SortTexts (RigidsIn v.scheme.ty)

@@ -2150,7 +2150,7 @@ fn CollectionNote lx, qk, span = match lx.g.vals[qk]:
                 ), v, c.span, args)
                 let gathered = ValueWidgetsAt lxd, e
                 let rowed = Each gathered, \|((gqk, types))| IsSome (?ValuedCases lx, gqk, types, "diagnostic")
-                "{said2}; the collection in `{InstanceKey d}`: its instantiations {instances}, its instantiations or uses {Debug users}, the reading's types there {ShownTypes (?ValuedTypes lxd, v, c.span, args)}, at each of them {Debug atEach}, gathered {Debug gathered}, each with rows {Debug rowed}"
+                "{said2}; the collection in `{InstanceKey d}`: its instantiations {instances}, its instantiations or uses {Debug users}, the reading's types there {ShownTypes (?ValuedTypes lxd, v, c.span, args)}, at each of them {Debug atEach}, gathered {Debug gathered}, each with rows {Debug rowed}, the fixed point's answer {Debug (EnclosingOutput lxd)}, the definition's type parameters {Debug (DefinitionRigids lxd, d)}, the checker's notes of its uses {Debug (Each (Filter (Values lx.useInsts), \|u| u.name == d.qk), \|u| u.tys)}"
             otherwise: said2
 
 # Where the name an expression calls starts, under its type arguments and groups.
@@ -3376,8 +3376,15 @@ fn PreludeMethod lx, cls, m, vals, span, t:
         # `impl ^Display` is too
         "Display": VlOwned (XCall (HelperRef "display_text"), [[Ref a]]), OutText
         "Compare": VlOwned (XCall (HelperRef "compare"), [[Ref a, Ref b]]), t
-        "Children": VlOwned (XCall (HelperRef "children"), [[Ref a]]), t
+        # (`Children` of `^Pod`: the runtimes have no `children`, and q13 called one,
+        # rustc E0425, doc-file-document-hosted-on-disk's dispatch of it)
+        "Children": VlOwned (Refusal "`Children` of `^Pod`: its lowering is not written yet"), t
         otherwise: OpValue lx, m, a, b, span, t
+
+# A method of a trait of the prelude the back end has no lowering of (`PreludeMethod`
+# refuses its call).
+IsUnloweredPreludeMethod: fn Text, Text -> Bool
+fn IsUnloweredPreludeMethod cls, m = cls == "Prelude.Pod" and m == "Children"
 
 # A binary operator.
 BinaryValue: unbounded fn Lx, Env, Text, Expr, Expr, Range -> Vl

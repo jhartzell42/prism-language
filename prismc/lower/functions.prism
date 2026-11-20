@@ -539,10 +539,12 @@ fn IsParamTy ignore, p = False
 DispatchName: fn Lx, Text, Text -> Text
 fn DispatchName lx, n, mq = "{Snake n}_{Or lx.rsNames[mq], (Snake (BareName mq))}"
 
-# The methods of a bound's trait a dispatch answers: its plain ones.
+# The methods of a bound's trait a dispatch answers: its plain ones the back end lowers
+# (`IsUnloweredPreludeMethod`: a call of one is refused where it stands, so no dispatch
+# of it is ever asked).
 DispatchedMethods: fn Lx, Text -> [Text]
 fn DispatchedMethods lx, c = match lx.g.traits[c]:
-    ? ctr: Filter ctr.methods, \|mq| not (HasPrefix (BareName mq), "@")
+    ? ctr: Filter ctr.methods, \|mq| not (HasPrefix (BareName mq), "@") and not (IsUnloweredPreludeMethod c, (BareName mq))
     nil: [[]]
 
 # A dispatch method's parameters and result: the variants, then the method's own with its
